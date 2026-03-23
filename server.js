@@ -6,7 +6,7 @@ const PORT = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
   // Serve the eye tracker HTML for any route
-  const file = path.join(__dirname, 'eye_tracker_v2.html');
+  const file = path.join(__dirname, 'eye_tracker_test.html');
   fs.readFile(file, (err, data) => {
     if (err) {
       res.writeHead(404); res.end('Not found'); return;
