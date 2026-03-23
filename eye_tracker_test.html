@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Center-Gaze Detector</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #07080d;
+    --surface: #0e0f18;
+    --surface2: #161828;
+    --border: rgba(255,255,255,0.07);
+    --accent: #00f0b0;
+    --accent-dim: rgba(0,240,176,0.10);
+    --accent-glow: rgba(0,240,176,0.25);
+    --danger: #ff3a5c;
+    --danger-dim: rgba(255,58,92,0.12);
+    --warn: #ffb830;
+    --warn-dim: rgba(255,184,48,0.12);
+    --text: #dde0f0;
+    --muted: #555a78;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 18px 16px 36px;
+    background-image: radial-gradient(ellipse at 20% 0%, rgba(0,240,176,0.04) 0%, transparent 60%),
+                      radial-gradient(ellipse at 80% 100%, rgba(0,80,200,0.05) 0%, transparent 60%);
+  }
+
+  header {
+    width: 100%; max-width: 980px;
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border); padding-bottom: 14px;
+  }
+  .logo { font-family: var(--sans); font-size: 20px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent); }
+  .badge {
+    font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--accent); border: 1px solid rgba(0,240,176,0.35);
+    padding: 3px 8px; border-radius: 2px; background: var(--accent-dim);
+  }
+  .badge.gray { color: var(--muted); border-color: rgba(255,255,255,0.1); background: transparent; margin-left: auto; }
+
+  .main-grid {
+    width: 100%; max-width: 980px;
+    display: grid; grid-template-columns: 1fr 310px; gap: 14px;
+  }
+
+  /* ── Camera panel ── */
+  .cam-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden; position: relative; aspect-ratio: 4/3;
+  }
+  #video { width: 100%; height: 100%; object-fit: cover; display: block; transform: scaleX(-1); }
+  #overlay { position: absolute; inset: 0; width: 100%; height: 100%; transform: scaleX(-1); }
+
+  /* ── Positioning guide overlay ── */
+  #posGuide {
+    position: absolute; inset: 0;
+    pointer-events: none; z-index: 5;
+  }
+
+  /* ── State ring ── */
+  .state-ring {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    width: 90px; height: 90px; border-radius: 50%;
+    border: 2px solid var(--muted); pointer-events: none; transition: all 0.35s;
+  }
+  .state-ring.center {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-dim), 0 0 40px var(--accent-glow);
+    animation: rpulse 2.2s ease-in-out infinite;
+  }
+  .state-ring.offcenter {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 4px var(--danger-dim), 0 0 30px rgba(255,58,92,0.2);
+  }
+  .state-ring.learning {
+    border-color: var(--warn);
+    box-shadow: 0 0 0 4px var(--warn-dim);
+    animation: rpulse 1s ease-in-out infinite;
+  }
+  @keyframes rpulse {
+    0%,100%{transform:translate(-50%,-50%) scale(1)}
+    50%{transform:translate(-50%,-50%) scale(1.07)}
+  }
+
+  /* ── Gaze direction indicator ── */
+  #gazeArrow {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    width: 60px; height: 60px;
+    pointer-events: none; z-index: 6;
+    opacity: 0; transition: opacity 0.3s;
+  }
+  #gazeArrow.show { opacity: 1; }
+
+  /* ── Score ring (circular progress for center confidence) ── */
+  #scoreRing {
+    position: absolute; top: 10px; right: 10px;
+    width: 54px; height: 54px;
+    pointer-events: none; z-index: 6;
+  }
+
+  /* ── Status banner ── */
+  #baselineBanner {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: none;
+    background: rgba(255,184,48,0.18);
+    border-bottom: 1px solid rgba(255,184,48,0.4);
+    padding: 7px 14px; font-size: 10px; letter-spacing: 0.5px;
+    color: var(--warn); text-align: center; z-index: 10;
+  }
+  #baselineBanner.show { display: block; }
+  #baselineBar {
+    position: absolute; bottom: 0; left: 0; height: 3px;
+    background: var(--warn); transition: width 0.1s linear; width: 0%;
+  }
+
+  /* ── Init overlay ── */
+  #initOverlay {
+    position: absolute; inset: 0; background: var(--surface);
+    display: flex; flex-direction: column;
+    align-items: flex-start; justify-content: center;
+    gap: 0; z-index: 20; padding: 28px;
+  }
+  #initOverlay.gone { display: none; }
+  .init-title { font-family: var(--sans); font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 20px; }
+  .steps { width: 100%; display: flex; flex-direction: column; gap: 13px; }
+  .step  { display: flex; flex-direction: column; gap: 5px; }
+  .step-hd { display: flex; align-items: center; gap: 9px; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+  .ico {
+    width: 17px; height: 17px; border-radius: 50%;
+    border: 1.5px solid var(--muted); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 9px;
+    transition: all 0.3s;
+  }
+  .ico.spin { border-color: var(--accent); border-top-color: transparent; animation: sp 0.7s linear infinite; }
+  .ico.ok   { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+  .ico.err  { border-color: var(--danger);  background: var(--danger-dim);  color: var(--danger); }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .slbl { color: var(--muted); transition: color 0.3s; }
+  .slbl.run { color: var(--text); }
+  .slbl.ok  { color: var(--accent); }
+  .slbl.err { color: var(--danger); }
+  .sbar { height: 2px; background: var(--surface2); border-radius: 1px; overflow: hidden; margin-left: 26px; }
+  .sfill { height: 100%; background: var(--accent); border-radius: 1px; width: 0%; transition: width 0.4s ease; }
+  .sfill.err { background: var(--danger); }
+  .sdetail { font-size: 9px; color: var(--muted); margin-left: 26px; min-height: 12px; }
+  .err-box {
+    display: none; margin-top: 16px; width: 100%;
+    background: var(--danger-dim); border: 1px solid var(--danger);
+    border-radius: 3px; padding: 10px 12px;
+    font-size: 10px; color: var(--danger); line-height: 1.9;
+  }
+  .err-box.show { display: block; }
+  .start-btn {
+    margin-top: 22px;
+    background: var(--accent-dim); border: 1px solid rgba(0,240,176,0.4);
+    color: var(--accent); font-family: var(--mono); font-size: 11px;
+    letter-spacing: 2px; text-transform: uppercase;
+    padding: 12px 26px; border-radius: 4px; cursor: pointer; transition: background 0.2s;
+  }
+  .start-btn:hover { background: rgba(0,240,176,0.2); }
+  .start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Cam footer ── */
+  .cam-footer {
+    position: absolute; bottom: 0; left: 0; right: 0; padding: 9px 13px;
+    background: linear-gradient(to top, rgba(0,0,0,0.85), transparent);
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+    z-index: 6;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); transition: all 0.3s; flex-shrink:0; }
+  .dot.on   { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .dot.warn { background: var(--warn);   box-shadow: 0 0 6px var(--warn); animation: blink 0.8s ease-in-out infinite; }
+  .dot.away { background: var(--danger); box-shadow: 0 0 6px var(--danger); animation: blink 0.6s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+  /* ── Sidebar ── */
+  .sidebar { display: flex; flex-direction: column; gap: 12px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+  .plbl {
+    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 12px;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .plbl::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  /* State display */
+  .state-big { text-align: center; padding: 12px 0 8px; }
+  .state-word { font-family: var(--sans); font-size: 30px; font-weight: 800; letter-spacing: -1px; color: var(--muted); transition: color 0.3s; }
+  .state-word.c { color: var(--accent); }
+  .state-word.o { color: var(--danger); }
+  .state-word.l { color: var(--warn); }
+  .state-sub  { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+
+  /* Confidence meter */
+  .conf-wrap { margin: 10px 0 8px; }
+  .conf-label { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-bottom: 5px; }
+  .conf-val { color: var(--text); font-weight: 700; }
+  .conf-track { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .conf-fill { height: 100%; border-radius: 3px; background: var(--danger); transition: width 0.15s ease, background 0.3s; width: 0%; }
+  .conf-fill.mid { background: var(--warn); }
+  .conf-fill.hi  { background: var(--accent); }
+
+  /* Signal bars */
+  .mrow { display: flex; flex-direction: column; gap: 4px; margin-bottom: 9px; }
+  .mhd  { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+  .mval { color: var(--text); font-weight: 600; }
+  .btrack { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+  .bfill  { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.12s ease, background 0.3s; width: 0%; }
+  .bfill.w { background: var(--warn); }
+  .bfill.b { background: var(--danger); }
+
+  /* Timeline */
+  .tline { display: flex; gap: 2px; height: 14px; margin-top: 4px; }
+  .tseg  { flex: 1; border-radius: 1px; background: var(--surface2); transition: background 0.3s; }
+  .tseg.c { background: var(--accent);  opacity: 0.6; }
+  .tseg.o { background: var(--danger);  opacity: 0.6; }
+
+  /* Sliders */
+  .srow { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+  .shd  { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+  .shd .thresh-val { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+
+  /* Stats grid */
+  .sgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .sbox  { background: var(--surface2); border-radius: 4px; padding: 10px 10px 8px; }
+  .snum  { font-family: var(--sans); font-size: 22px; font-weight: 700; color: var(--text); line-height: 1; }
+  .slbl2 { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+
+  /* Log */
+  .logarea { font-size: 10px; line-height: 1.9; color: var(--muted); max-height: 100px; overflow-y: auto; }
+  .logarea::-webkit-scrollbar { width: 2px; }
+  .logarea::-webkit-scrollbar-thumb { background: var(--border); }
+  .ll { display: flex; gap: 6px; }
+  .lt { color: var(--muted); flex-shrink: 0; }
+  .ll.c .lm { color: var(--accent); }
+  .ll.o .lm { color: var(--danger); }
+  .ll.l .lm { color: var(--warn); }
+
+  .ctrl { display: flex; gap: 8px; margin-top: 10px; }
+  button.sec {
+    flex:1; padding: 9px; border: 1px solid var(--border); border-radius: 4px;
+    background: transparent; color: var(--text); font-family: var(--mono);
+    font-size: 10px; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; transition: all 0.2s;
+  }
+  button.sec:hover { background: var(--surface2); }
+
+  /* Positioning tip */
+  #posTip {
+    position: absolute; bottom: 38px; left: 0; right: 0;
+    display: none; text-align: center; z-index: 7;
+    font-size: 10px; letter-spacing: 0.5px;
+    padding: 5px 10px;
+    color: rgba(255,255,255,0.7);
+  }
+  #posTip.show { display: block; }
+
+  @media (max-width: 680px) { .main-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Center<span>Gaze</span></div>
+  <span class="badge">Strict Center Detection</span>
+  <span class="badge gray">MediaPipe · No Calibration</span>
+</header>
+
+<div class="main-grid">
+
+  <div class="cam-wrap">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="overlay"></canvas>
+    <!-- Positioning guide (SVG drawn by JS) -->
+    <svg id="posGuide" viewBox="0 0 640 480" preserveAspectRatio="none"></svg>
+    <!-- Gaze direction hint arrow -->
+    <svg id="gazeArrow" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"></svg>
+    <!-- Score ring (top-right corner) -->
+    <svg id="scoreRing" viewBox="0 0 54 54" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="27" cy="27" r="22" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="4"/>
+      <circle id="scoreArc" cx="27" cy="27" r="22" fill="none" stroke="var(--muted)" stroke-width="4"
+        stroke-dasharray="138.2" stroke-dashoffset="138.2"
+        stroke-linecap="round" transform="rotate(-90 27 27)" style="transition:stroke-dashoffset 0.2s,stroke 0.3s"/>
+      <text id="scoreText" x="27" y="31" text-anchor="middle" fill="var(--text)"
+        font-size="12" font-family="'Space Mono',monospace" font-weight="700">—</text>
+    </svg>
+    <div class="state-ring" id="ring"></div>
+    <div id="baselineBanner">📍 Look straight at screen — learning your center baseline…</div>
+    <div id="baselineBar"></div>
+    <div id="posTip"></div>
+    <div id="initOverlay">
+      <div class="init-title">Initializing pipeline</div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-hd"><div class="ico" id="i0"></div><span class="slbl" id="l0">Camera access</span></div>
+          <div class="sbar"><div class="sfill" id="p0"></div></div>
+          <div class="sdetail" id="d0">pending</div>
+        </div>
+        <div class="step">
+          <div class="step-hd"><div class="ico" id="i1"></div><span class="slbl" id="l1">Video stream</span></div>
+          <div class="sbar"><div class="sfill" id="p1"></div></div>
+          <div class="sdetail" id="d1">pending</div>
+        </div>
+        <div class="step">
+          <div class="step-hd"><div class="ico" id="i2"></div><span class="slbl" id="l2">MediaPipe face mesh</span></div>
+          <div class="sbar"><div class="sfill" id="p2"></div></div>
+          <div class="sdetail" id="d2">pending</div>
+        </div>
+        <div class="step">
+          <div class="step-hd"><div class="ico" id="i3"></div><span class="slbl" id="l3">Detector init</span></div>
+          <div class="sbar"><div class="sfill" id="p3"></div></div>
+          <div class="sdetail" id="d3">pending</div>
+        </div>
+        <div class="step">
+          <div class="step-hd"><div class="ico" id="i4"></div><span class="slbl" id="l4">Warmup inference</span></div>
+          <div class="sbar"><div class="sfill" id="p4"></div></div>
+          <div class="sdetail" id="d4">pending</div>
+        </div>
+      </div>
+      <div class="err-box" id="errBox"></div>
+      <button class="start-btn" id="startBtn" onclick="boot()">▶ Start Camera</button>
+    </div>
+    <div class="cam-footer">
+      <div class="dot" id="dot"></div>
+      <span id="statusTxt">Click Start Camera</span>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <div class="panel">
+      <div class="plbl">Gaze State</div>
+      <div class="state-big">
+        <div class="state-word" id="stateWord">—</div>
+        <div class="state-sub" id="stateSub">waiting for camera</div>
+      </div>
+      <!-- Center confidence bar -->
+      <div class="conf-wrap">
+        <div class="conf-label"><span>Center confidence</span><span class="conf-val" id="confVal">—</span></div>
+        <div class="conf-track"><div class="conf-fill" id="confFill"></div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="plbl">Live Signals</div>
+      <div class="mrow">
+        <div class="mhd"><span>Iris symmetry (L)</span><span class="mval" id="vIL">—</span></div>
+        <div class="btrack"><div class="bfill" id="bIL"></div></div>
+      </div>
+      <div class="mrow">
+        <div class="mhd"><span>Iris symmetry (R)</span><span class="mval" id="vIR">—</span></div>
+        <div class="btrack"><div class="bfill" id="bIR"></div></div>
+      </div>
+      <div class="mrow">
+        <div class="mhd"><span>Head yaw Δ (°)</span><span class="mval" id="vYaw">—</span></div>
+        <div class="btrack"><div class="bfill" id="bYaw"></div></div>
+      </div>
+      <div class="mrow">
+        <div class="mhd"><span>Head pitch Δ (°)</span><span class="mval" id="vPitch">—</span></div>
+        <div class="btrack"><div class="bfill" id="bPitch"></div></div>
+      </div>
+      <div class="plbl" style="margin-top:6px">Last 60s</div>
+      <div class="tline" id="tline"></div>
+    </div>
+
+    <div class="panel">
+      <div class="plbl">Strict Thresholds</div>
+
+      <div class="srow">
+        <div class="shd">
+          <span>Iris Δ tolerance (±)</span>
+          <span class="thresh-val" id="svIT">0.10</span>
+        </div>
+        <input type="range" id="slIT" min="0.04" max="0.30" step="0.01" value="0.10"
+          oninput="document.getElementById('svIT').textContent=parseFloat(this.value).toFixed(2)">
+      </div>
+
+      <div class="srow">
+        <div class="shd">
+          <span>Head yaw Δ tolerance (°)</span>
+          <span class="thresh-val" id="svYT">12</span>
+        </div>
+        <input type="range" id="slYT" min="5" max="35" step="1" value="12"
+          oninput="document.getElementById('svYT').textContent=this.value">
+      </div>
+
+      <div class="srow">
+        <div class="shd">
+          <span>Head pitch Δ tolerance (°)</span>
+          <span class="thresh-val" id="svPT">10</span>
+        </div>
+        <input type="range" id="slPT" min="4" max="30" step="1" value="10"
+          oninput="document.getElementById('svPT').textContent=this.value">
+      </div>
+
+      <div class="srow">
+        <div class="shd">
+          <span>Alert delay (s)</span>
+          <span class="thresh-val" id="svAD">1.5</span>
+        </div>
+        <input type="range" id="slAD" min="0.5" max="5" step="0.5" value="1.5"
+          oninput="document.getElementById('svAD').textContent=parseFloat(this.value).toFixed(1)">
+      </div>
+
+      <button class="sec" onclick="resetBaseline()">↺ Re-learn Baseline</button>
+    </div>
+
+    <div class="panel">
+      <div class="plbl">Session</div>
+      <div class="sgrid">
+        <div class="sbox"><div class="snum" id="sFocus">—</div><div class="slbl2">On-Center %</div></div>
+        <div class="sbox"><div class="snum" id="sAway">—</div><div class="slbl2">Off-Center %</div></div>
+        <div class="sbox"><div class="snum" id="sTime">0s</div><div class="slbl2">Session</div></div>
+        <div class="sbox"><div class="snum" id="sAlerts">0</div><div class="slbl2">Alerts</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="plbl">Event Log</div>
+      <div class="logarea" id="logEl"></div>
+      <div class="ctrl"><button class="sec" onclick="resetSession()">Reset Session</button></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Globals ────────────────────────────────────────────────────────────────
+let faceMeshInstance = null, running = false;
+let lastState = null, awayStart = null;
+let sessionStart = null, centerMs = 0, offMs = 0, lastTick = null, alerts = 0;
+let tlHistory = [];
+
+// ── Baseline ───────────────────────────────────────────────────────────────
+// Strategy: collect 4 seconds of data while user looks at screen.
+// We capture median of iris ratios and head angles → personal "center reference".
+// We do NOT drift-adapt aggressively (the old code drifted too much, masking off-center).
+// Only very subtle adaptation for slow posture drift.
+const BASELINE_SECS   = 4;
+const BASELINE_DECAY  = 0.0005;  // much slower drift than before
+let baselineSamples   = [];
+let baseline          = null;
+let baselineComplete  = false;
+let baselineStartTime = null;
+
+// ── DOM ────────────────────────────────────────────────────────────────────
+const video     = document.getElementById('video');
+const cvs       = document.getElementById('overlay');
+const ctx       = cvs.getContext('2d');
+const ring      = document.getElementById('ring');
+const dot       = document.getElementById('dot');
+const statusTxt = document.getElementById('statusTxt');
+const stateWord = document.getElementById('stateWord');
+const stateSub  = document.getElementById('stateSub');
+const baseBar   = document.getElementById('baselineBar');
+const baseBanner= document.getElementById('baselineBanner');
+const posGuide  = document.getElementById('posGuide');
+const posTip    = document.getElementById('posTip');
+const gazeArrow = document.getElementById('gazeArrow');
+const scoreArc  = document.getElementById('scoreArc');
+const scoreText = document.getElementById('scoreText');
+const confFill  = document.getElementById('confFill');
+const confVal   = document.getElementById('confVal');
+const tline     = document.getElementById('tline');
+
+// Build timeline segments
+for (let i = 0; i < 60; i++) {
+  const s = document.createElement('div');
+  s.className = 'tseg';
+  tline.appendChild(s);
+}
+
+// ── Positioning guide SVG ──────────────────────────────────────────────────
+// Draws: face oval zone, crosshair lines, distance indicators
+function drawPositioningGuide() {
+  posGuide.innerHTML = `
+    <!-- Crosshair lines -->
+    <line x1="320" y1="0" x2="320" y2="480" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="6,8"/>
+    <line x1="0" y1="240" x2="640" y2="240" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="6,8"/>
+
+    <!-- Face oval guide zone -->
+    <ellipse cx="320" cy="220" rx="95" ry="118"
+      fill="none" stroke="rgba(0,240,176,0.18)" stroke-width="1.5" stroke-dasharray="10,8"/>
+
+    <!-- Corner bracket TL -->
+    <path d="M 192 80 L 192 104 M 192 80 L 216 80" stroke="rgba(0,240,176,0.35)" stroke-width="1.5" fill="none"/>
+    <!-- Corner bracket TR -->
+    <path d="M 448 80 L 448 104 M 448 80 L 424 80" stroke="rgba(0,240,176,0.35)" stroke-width="1.5" fill="none"/>
+    <!-- Corner bracket BL -->
+    <path d="M 192 360 L 192 336 M 192 360 L 216 360" stroke="rgba(0,240,176,0.35)" stroke-width="1.5" fill="none"/>
+    <!-- Corner bracket BR -->
+    <path d="M 448 360 L 448 336 M 448 360 L 424 360" stroke="rgba(0,240,176,0.35)" stroke-width="1.5" fill="none"/>
+
+    <!-- Center dot -->
+    <circle cx="320" cy="220" r="3" fill="rgba(0,240,176,0.25)" stroke="rgba(0,240,176,0.5)" stroke-width="1"/>
+
+    <!-- Labels -->
+    <text x="320" y="72" text-anchor="middle" fill="rgba(0,240,176,0.5)"
+      font-size="9" font-family="'Space Mono',monospace" letter-spacing="2">POSITION FACE HERE</text>
+    <text x="198" y="376" fill="rgba(255,255,255,0.25)" font-size="8" font-family="'Space Mono',monospace">50-80cm</text>
+  `;
+}
+drawPositioningGuide();
+
+// ── Step helpers ───────────────────────────────────────────────────────────
+function stepRun(n, d) {
+  document.getElementById('i'+n).className = 'ico spin';
+  document.getElementById('l'+n).className = 'slbl run';
+  document.getElementById('d'+n).textContent = d;
+  document.getElementById('p'+n).style.width = '35%';
+}
+function stepOk(n, d) {
+  document.getElementById('i'+n).className = 'ico ok';
+  document.getElementById('i'+n).textContent = '✓';
+  document.getElementById('l'+n).className = 'slbl ok';
+  document.getElementById('d'+n).textContent = d;
+  document.getElementById('p'+n).style.width = '100%';
+}
+function stepErr(n, d) {
+  document.getElementById('i'+n).className = 'ico err';
+  document.getElementById('i'+n).textContent = '✕';
+  document.getElementById('l'+n).className = 'slbl err';
+  document.getElementById('d'+n).textContent = d;
+  document.getElementById('p'+n).className = 'sfill err';
+  document.getElementById('p'+n).style.width = '100%';
+}
+function showErr(html) {
+  const b = document.getElementById('errBox');
+  b.innerHTML = html; b.className = 'err-box show';
+}
+
+function log(msg, cls = '') {
+  const el = document.getElementById('logEl');
+  const t = new Date().toLocaleTimeString('en',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const d = document.createElement('div');
+  d.className = 'll ' + cls;
+  d.innerHTML = `<span class="lt">${t}</span><span class="lm">${msg}</span>`;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+
+function animBar(n, target, dur) {
+  const el = document.getElementById('p'+n);
+  let s = 35, last = performance.now();
+  const step = (now) => {
+    const dt = now - last; last = now;
+    s = Math.min(target, s + (target - 35) / (dur / dt));
+    el.style.width = s + '%';
+    if (s < target && document.getElementById('l'+n).className.includes('run')) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = res;
+    s.onerror = () => rej(new Error('Script load failed: ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+async function boot() {
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true;
+
+  // Step 0: camera
+  stepRun(0, 'requesting permission…');
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user', frameRate: { ideal: 30 } }
+    });
+    stepOk(0, 'camera granted');
+    log('Camera permission granted');
+  } catch(e) {
+    stepErr(0, e.message);
+    showErr(`<b>Camera denied:</b><br>${e.message}<br><br>▸ Allow camera access in your browser`);
+    btn.disabled = false; return;
+  }
+
+  // Step 1: video
+  stepRun(1, 'starting video stream…');
+  try {
+    video.srcObject = stream;
+    await new Promise((res, rej) => {
+      video.onloadedmetadata = res;
+      setTimeout(() => rej(new Error('timeout')), 6000);
+    });
+    await video.play();
+    stepOk(1, `stream active · ${video.videoWidth}×${video.videoHeight}`);
+    log(`Camera ${video.videoWidth}×${video.videoHeight}`);
+  } catch(e) {
+    stepErr(1, e.message);
+    showErr(`<b>Video stream failed:</b><br>${e.message}`);
+    btn.disabled = false; return;
+  }
+
+  // Step 2: MediaPipe
+  stepRun(2, 'loading MediaPipe face_mesh…');
+  animBar(2, 85, 10000);
+  try {
+    await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js');
+    stepOk(2, 'MediaPipe loaded');
+    log('MediaPipe loaded');
+  } catch(e) {
+    stepErr(2, e.message);
+    showErr(`<b>MediaPipe load failed:</b><br>${e.message}`);
+    btn.disabled = false; return;
+  }
+
+  // Step 3: FaceMesh init
+  stepRun(3, 'init face mesh model…');
+  animBar(3, 90, 20000);
+  try {
+    await new Promise((resolve, reject) => {
+      faceMeshInstance = new FaceMesh({
+        locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${f}`
+      });
+      faceMeshInstance.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6,
+      });
+      faceMeshInstance.onResults(() => resolve());
+      setTimeout(() => reject(new Error('Model timeout')), 30000);
+      faceMeshInstance.send({ image: video }).catch(reject);
+    });
+    stepOk(3, 'model ready · 478 landmarks + iris');
+    log('FaceMesh + iris ready');
+  } catch(e) {
+    stepErr(3, e.message);
+    showErr(`<b>Model init failed:</b><br>${e.message}`);
+    btn.disabled = false; return;
+  }
+
+  // Step 4: warmup
+  stepRun(4, 'warmup frame…');
+  try {
+    await new Promise((res, rej) => {
+      faceMeshInstance.onResults(res);
+      setTimeout(() => rej(new Error('warmup timeout')), 5000);
+      faceMeshInstance.send({ image: video }).catch(rej);
+    });
+    stepOk(4, 'inference OK · pipeline live');
+    log('Warmup OK');
+  } catch(e) {
+    stepOk(4, 'ready (warmup skipped)');
+  }
+
+  // Go live
+  setTimeout(() => {
+    document.getElementById('initOverlay').className = 'gone';
+    dot.className = 'dot warn';
+    statusTxt.textContent = 'Learning baseline…';
+    sessionStart = Date.now();
+    running = true;
+    baselineStartTime = Date.now();
+    baseBanner.className = 'show';
+    ring.className = 'state-ring learning';
+    stateWord.className = 'state-word l';
+    stateWord.textContent = 'LEARNING';
+    stateSub.textContent  = 'look straight at screen';
+    log('Baseline collection (4s) — look straight ahead', 'l');
+    setInterval(updateStats, 1000);
+    requestAnimationFrame(loop);
+  }, 300);
+}
+
+// ── Baseline helpers ───────────────────────────────────────────────────────
+function resetBaseline() {
+  baselineSamples = []; baseline = null; baselineComplete = false;
+  baselineStartTime = Date.now();
+  baseBanner.className = 'show';
+  baseBar.style.width = '0%';
+  ring.className = 'state-ring learning';
+  stateWord.className = 'state-word l';
+  stateWord.textContent = 'LEARNING';
+  stateSub.textContent = 'look straight at screen';
+  dot.className = 'dot warn';
+  statusTxt.textContent = 'Re-learning baseline…';
+  log('Baseline reset — look straight ahead for 4s', 'l');
+}
+
+function collectBaseline(iL, iR, yaw, pitch) {
+  const elapsed = (Date.now() - baselineStartTime) / 1000;
+  const pct = Math.min(100, (elapsed / BASELINE_SECS) * 100);
+  baseBar.style.width = pct + '%';
+  baselineSamples.push({ iL, iR, yaw, pitch });
+
+  if (elapsed >= BASELINE_SECS) {
+    const median = (arr) => {
+      const s = [...arr].sort((a,b) => a-b);
+      const m = Math.floor(s.length/2);
+      return s.length%2 ? s[m] : (s[m-1]+s[m])/2;
+    };
+    // Also compute stddev to assess baseline quality
+    const mean = (arr) => arr.reduce((a,b)=>a+b,0)/arr.length;
+    const std  = (arr) => { const m=mean(arr); return Math.sqrt(arr.reduce((a,b)=>a+(b-m)**2,0)/arr.length); };
+    const iLArr = baselineSamples.map(s=>s.iL);
+    const iRArr = baselineSamples.map(s=>s.iR);
+    const yArr  = baselineSamples.map(s=>s.yaw);
+    const pArr  = baselineSamples.map(s=>s.pitch);
+
+    baseline = {
+      iL: median(iLArr), iR: median(iRArr),
+      yaw: median(yArr), pitch: median(pArr),
+      stdIL: std(iLArr), stdIR: std(iRArr),
+    };
+    baselineComplete = true;
+    baseBanner.className = '';
+    baseBar.style.width = '0%';
+    const quality = (baseline.stdIL + baseline.stdIR) < 0.04 ? 'GOOD' : 'NOISY';
+    log(`Baseline: iL=${baseline.iL.toFixed(3)} iR=${baseline.iR.toFixed(3)} yaw=${baseline.yaw.toFixed(1)}° pitch=${baseline.pitch.toFixed(1)}° [${quality}]`, 'l');
+  }
+}
+
+// Very slow drift — only compensate for genuine long-term posture shifts
+function driftBaseline(iL, iR, yaw, pitch) {
+  if (!baseline) return;
+  baseline.iL    += (iL    - baseline.iL)    * BASELINE_DECAY;
+  baseline.iR    += (iR    - baseline.iR)    * BASELINE_DECAY;
+  baseline.yaw   += (yaw   - baseline.yaw)   * BASELINE_DECAY;
+  baseline.pitch += (pitch - baseline.pitch) * BASELINE_DECAY;
+}
+
+// ── Gaze direction visualization ───────────────────────────────────────────
+// Draws an arrow showing which direction the user is looking
+function updateGazeArrow(yawDev, pitchDev, yT, pT, isOff) {
+  if (!isOff) {
+    gazeArrow.classList.remove('show');
+    return;
+  }
+  gazeArrow.classList.add('show');
+  // Determine arrow direction based on raw yaw/pitch deviation
+  const angle = Math.atan2(pitchDev, yawDev);
+  const mag = Math.min(1, Math.sqrt(yawDev*yawDev + pitchDev*pitchDev) / Math.max(yT, pT));
+  gazeArrow.innerHTML = `
+    <circle cx="30" cy="30" r="28" fill="rgba(255,58,92,0.12)" stroke="rgba(255,58,92,0.4)" stroke-width="1.5"/>
+    <g transform="translate(30,30) rotate(${angle * 180/Math.PI})">
+      <line x1="0" y1="0" x2="${18*mag}" y2="0" stroke="rgba(255,58,92,0.9)" stroke-width="2.5" stroke-linecap="round"/>
+      <polygon points="${18*mag},0 ${13*mag},-4 ${13*mag},4" fill="rgba(255,58,92,0.9)"/>
+    </g>
+  `;
+}
+
+// ── Score ring updater ─────────────────────────────────────────────────────
+const ARC_LEN = 138.2; // 2π * 22
+function updateScoreRing(confidence) {
+  const offset = ARC_LEN * (1 - confidence);
+  scoreArc.style.strokeDashoffset = offset;
+  const pct = Math.round(confidence * 100);
+  scoreText.textContent = pct + '%';
+  if (confidence > 0.75) {
+    scoreArc.style.stroke = 'var(--accent)';
+    scoreText.setAttribute('fill', 'var(--accent)');
+  } else if (confidence > 0.4) {
+    scoreArc.style.stroke = 'var(--warn)';
+    scoreText.setAttribute('fill', 'var(--warn)');
+  } else {
+    scoreArc.style.stroke = 'var(--danger)';
+    scoreText.setAttribute('fill', 'var(--danger)');
+  }
+  // Also update conf bar
+  const cls = confidence > 0.75 ? 'conf-fill hi' : confidence > 0.4 ? 'conf-fill mid' : 'conf-fill';
+  confFill.className = cls;
+  confFill.style.width = (confidence * 100) + '%';
+  confVal.textContent = pct + '%';
+}
+
+// ── Face positioning tips ──────────────────────────────────────────────────
+let lastPosWarning = 0;
+function checkFacePosition(lm, W, H) {
+  const nosePx = { x: lm[1].x * W, y: lm[1].y * H };
+  const eyeL   = { x: lm[33].x * W, y: lm[33].y * H };
+  const eyeR   = { x: lm[263].x * W, y: lm[263].y * H };
+  const faceWidth = Math.abs(eyeR.x - eyeL.x);
+
+  const now = Date.now();
+  if (now - lastPosWarning < 3000) return; // only warn every 3s
+
+  let tip = '';
+  const cx = nosePx.x / W;
+  const cy = nosePx.y / H;
+
+  if (faceWidth < W * 0.14) tip = '↔ Move closer to camera';
+  else if (faceWidth > W * 0.55) tip = '↔ Move farther from camera';
+  else if (cx < 0.3) tip = '→ Move right — center your face';
+  else if (cx > 0.7) tip = '← Move left — center your face';
+  else if (cy < 0.25) tip = '↓ Move down slightly';
+  else if (cy > 0.65) tip = '↑ Move up slightly';
+
+  if (tip) {
+    posTip.textContent = tip;
+    posTip.className = 'show';
+    lastPosWarning = now;
+    setTimeout(() => { posTip.className = ''; }, 2500);
+  }
+}
+
+// ── Main loop ──────────────────────────────────────────────────────────────
+async function loop() {
+  if (!running) return;
+
+  cvs.width  = video.videoWidth  || 640;
+  cvs.height = video.videoHeight || 480;
+  ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+  const now = Date.now();
+
+  try {
+    const result = await new Promise((resolve, reject) => {
+      faceMeshInstance.onResults(resolve);
+      setTimeout(() => reject(new Error('frame timeout')), 2000);
+      faceMeshInstance.send({ image: video }).catch(reject);
+    });
+
+    const lmList = result.multiFaceLandmarks;
+
+    if (lmList && lmList.length > 0) {
+      const W = cvs.width, H = cvs.height;
+      const lm = lmList[0];
+      const px = (i) => ({ x: lm[i].x * W, y: lm[i].y * H });
+
+      // ── Draw landmarks ──
+      // Iris centers
+      [[468, 'rgba(0,240,176,0.85)', 5], [473, 'rgba(0,240,176,0.85)', 5]].forEach(([i, c, r]) => {
+        const p = px(i);
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2);
+        ctx.fillStyle = c; ctx.fill();
+        // Ring around iris
+        ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI*2);
+        ctx.strokeStyle = 'rgba(0,240,176,0.25)'; ctx.lineWidth = 1.5; ctx.stroke();
+      });
+      // Eye corners
+      [33, 133, 263, 362].forEach(i => {
+        const p = px(i);
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(255,184,48,0.6)'; ctx.fill();
+      });
+      // Nose bridge line (indicates head pose)
+      const noseTop = px(168); const noseTip = px(1);
+      ctx.beginPath(); ctx.moveTo(noseTop.x, noseTop.y); ctx.lineTo(noseTip.x, noseTip.y);
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1.5; ctx.stroke();
+
+      // ── Iris-in-eye ratio (horizontal position within eye socket) ──
+      // Key insight: at screen center, iris ratio should be ~0.5 (centered in eye)
+      // This is the most reliable calibration-free signal
+      function irisRatio(outer, inner, iris) {
+        const minX = Math.min(lm[outer].x, lm[inner].x);
+        const maxX = Math.max(lm[outer].x, lm[inner].x);
+        const w = maxX - minX;
+        return w < 0.001 ? 0.5 : (lm[iris].x - minX) / w;
+      }
+      const iL = irisRatio(33, 133, 468);
+      const iR = irisRatio(263, 362, 473);
+
+      // ── Head pose ──
+      const nx = lm[1].x, lx = lm[234].x, rx = lm[454].x;
+      const fw = Math.abs(rx - lx);
+      const yaw = fw > 0.001 ? ((nx - lx) / fw - 0.5) * 90 : 0;
+
+      const ny = lm[1].y, fy = lm[10].y, cy152 = lm[152].y;
+      const fh = Math.abs(cy152 - fy);
+      const pitch = fh > 0.001 ? ((ny - fy) / fh - 0.42) * 90 : 0;
+
+      // ── Face position check ──
+      checkFacePosition(lm, W, H);
+
+      // ── Baseline collection ──
+      if (!baselineComplete) {
+        collectBaseline(iL, iR, yaw, pitch);
+        if (lastTick) { centerMs += now - lastTick; }
+        lastTick = now;
+        updateTimeline('c');
+        requestAnimationFrame(loop);
+        return;
+      }
+
+      // ── Drift (very slow) ──
+      driftBaseline(iL, iR, yaw, pitch);
+
+      // ── Deviation from personal baseline ──
+      const iLdev   = Math.abs(iL - baseline.iL);
+      const iRdev   = Math.abs(iR - baseline.iR);
+      const yawDev  = Math.abs(yaw   - baseline.yaw);
+      const pitchDev= Math.abs(pitch - baseline.pitch);
+
+      // ── Strict thresholds ──
+      const iT = parseFloat(document.getElementById('slIT').value);
+      const yT = parseFloat(document.getElementById('slYT').value);
+      const pT = parseFloat(document.getElementById('slPT').value);
+      const delayMs = parseFloat(document.getElementById('slAD').value) * 1000;
+
+      // ── Center confidence score (0–1) ──
+      // Weighted combination: iris position (50%) + head yaw (35%) + head pitch (15%)
+      const irisScore = Math.max(0, 1 - (Math.max(iLdev, iRdev) / iT));
+      const yawScore  = Math.max(0, 1 - (yawDev / yT));
+      const pitScore  = Math.max(0, 1 - (pitchDev / pT));
+      const confidence = 0.50 * irisScore + 0.35 * yawScore + 0.15 * pitScore;
+
+      updateScoreRing(confidence);
+      updateMetricBars(iLdev, iRdev, yawDev, pitchDev, iT, yT, pT);
+
+      // ── ALL THREE signals must pass for CENTER ──
+      // This is the key fix: before only iris OR yaw needed to pass
+      const irisOk = iLdev < iT && iRdev < iT;
+      const yawOk  = yawDev < yT;
+      const pitOk  = pitchDev < pT;
+      const centered = irisOk && yawOk && pitOk;
+
+      // Show direction arrow when off-center
+      const rawYawDir  = (yaw - baseline.yaw);
+      const rawPitDir  = (pitch - baseline.pitch);
+      updateGazeArrow(rawYawDir, rawPitDir, yT, pT, !centered);
+
+      if (centered) {
+        awayStart = null;
+        if (lastState !== 'c') { lastState = 'c'; setCenter(); log('● Gaze on CENTER', 'c'); }
+        else setCenter();
+      } else {
+        if (!awayStart) awayStart = now;
+        if (now - awayStart >= delayMs) {
+          if (lastState !== 'o') {
+            lastState = 'o'; alerts++;
+            setOffCenter();
+            const reason = !irisOk ? `iris Δ${Math.max(iLdev,iRdev).toFixed(3)}` :
+                           !yawOk  ? `yaw Δ${yawDev.toFixed(1)}°` :
+                                     `pitch Δ${pitchDev.toFixed(1)}°`;
+            log(`⚠ Off-center · ${reason}`, 'o');
+          } else setOffCenter();
+        }
+      }
+
+    } else {
+      setIdle();
+      awayStart = null; lastState = null; lastTick = null;
+      updateScoreRing(0);
+      gazeArrow.classList.remove('show');
+    }
+  } catch(e) {
+    if (!loop._lastErr || Date.now() - loop._lastErr > 2000) {
+      log('⚠ ' + e.message);
+      loop._lastErr = Date.now();
+    }
+  }
+
+  if (lastTick && lastState) {
+    const dt = now - lastTick;
+    if (lastState === 'c') centerMs += dt;
+    if (lastState === 'o') offMs += dt;
+  }
+  lastTick = now;
+  updateTimeline(lastState);
+  requestAnimationFrame(loop);
+}
+
+// ── Metric bars ────────────────────────────────────────────────────────────
+function updateMetricBars(iLdev, iRdev, yawDev, pitchDev, iT, yT, pT) {
+  document.getElementById('vIL').textContent    = iLdev.toFixed(3);
+  document.getElementById('vIR').textContent    = iRdev.toFixed(3);
+  document.getElementById('vYaw').textContent   = yawDev.toFixed(1) + '°';
+  document.getElementById('vPitch').textContent = pitchDev.toFixed(1) + '°';
+
+  function cls(val, thresh) { return val > thresh ? 'bfill b' : val > thresh*0.65 ? 'bfill w' : 'bfill'; }
+
+  const bIL = document.getElementById('bIL');
+  bIL.style.width = Math.min(100, iLdev/iT*100) + '%';
+  bIL.className = cls(iLdev, iT);
+
+  const bIR = document.getElementById('bIR');
+  bIR.style.width = Math.min(100, iRdev/iT*100) + '%';
+  bIR.className = cls(iRdev, iT);
+
+  const bYaw = document.getElementById('bYaw');
+  bYaw.style.width = Math.min(100, yawDev/yT*100) + '%';
+  bYaw.className = cls(yawDev, yT);
+
+  const bPit = document.getElementById('bPitch');
+  bPit.style.width = Math.min(100, pitchDev/pT*100) + '%';
+  bPit.className = cls(pitchDev, pT);
+}
+
+// ── State setters ──────────────────────────────────────────────────────────
+function setCenter() {
+  ring.className = 'state-ring center';
+  stateWord.className = 'state-word c'; stateWord.textContent = 'CENTERED';
+  stateSub.textContent = 'looking at screen center';
+  dot.className = 'dot on'; statusTxt.textContent = 'On center';
+}
+function setOffCenter() {
+  ring.className = 'state-ring offcenter';
+  stateWord.className = 'state-word o'; stateWord.textContent = 'OFF-CENTER';
+  stateSub.textContent = 'gaze away from center';
+  dot.className = 'dot away'; statusTxt.textContent = 'Off center';
+}
+function setIdle() {
+  ring.className = 'state-ring';
+  stateWord.className = 'state-word'; stateWord.textContent = '—';
+  stateSub.textContent = 'no face detected';
+  dot.className = 'dot'; statusTxt.textContent = 'No face';
+  confFill.style.width = '0%'; confVal.textContent = '—';
+  ['vIL','vIR','vYaw','vPitch'].forEach(id => document.getElementById(id).textContent = '—');
+  ['bIL','bIR','bYaw','bPitch'].forEach(id => {
+    document.getElementById(id).style.width = '0%';
+    document.getElementById(id).className = 'bfill';
+  });
+}
+
+function updateTimeline(state) {
+  const nowSec = Math.floor(Date.now()/1000);
+  const last = tlHistory[tlHistory.length-1];
+  if (!last || last.t !== nowSec) {
+    tlHistory.push({ t: nowSec, state });
+    if (tlHistory.length > 60) tlHistory.shift();
+  }
+  const segs = tline.querySelectorAll('.tseg');
+  const arr = tlHistory.slice(-60);
+  segs.forEach((s, i) => {
+    s.className = 'tseg';
+    if (i < arr.length && arr[i].state) s.classList.add(arr[i].state);
+  });
+}
+
+function updateStats() {
+  if (!sessionStart) return;
+  const tot = Date.now() - sessionStart;
+  const s = Math.round(tot/1000);
+  document.getElementById('sTime').textContent = s < 60 ? s+'s' : Math.floor(s/60)+'m'+(s%60)+'s';
+  document.getElementById('sFocus').textContent = tot ? Math.round(centerMs/tot*100)+'%' : '—';
+  document.getElementById('sAway').textContent  = tot ? Math.round(offMs/tot*100)+'%' : '—';
+  document.getElementById('sAlerts').textContent = alerts;
+}
+
+function resetSession() {
+  sessionStart = Date.now(); centerMs = offMs = alerts = 0;
+  lastTick = null; awayStart = null; lastState = null; tlHistory = [];
+  document.getElementById('logEl').innerHTML = '';
+  tline.querySelectorAll('.tseg').forEach(s => s.className = 'tseg');
+  log('Session reset'); updateStats();
+}
+
+log('Ready · click Start Camera to begin');
+</script>
+</body>
+</html>

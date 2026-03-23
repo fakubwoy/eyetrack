@@ -1,0 +1,12 @@
+{
+  "name": "centergaze",
+  "version": "1.0.0",
+  "description": "Center gaze attention detector",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
