@@ -1,10 +1,13 @@
 {
   "name": "centergaze",
-  "version": "1.0.0",
-  "description": "Center gaze attention detector",
+  "version": "2.0.0",
+  "description": "CenterGaze – Patient/Doctor gaze tracking system",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
   },
   "engines": {
     "node": ">=18"

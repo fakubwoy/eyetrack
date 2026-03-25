@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CenterGaze – Patient</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #07080d;
+    --accent: #00f0b0;
+    --accent-dim: rgba(0,240,176,0.10);
+    --danger: #ff3a5c;
+    --warn: #ffb830;
+    --text: #dde0f0;
+    --muted: #555a78;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+
+  body {
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    color: var(--text);
+    overflow: hidden;
+  }
+
+  /* Full-screen fixation display */
+  #fixationScreen {
+    display: none;
+    width: 100vw;
+    height: 100vh;
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 28px;
+  }
+  #fixationScreen.active { display: flex; }
+
+  /* Crosshair lines */
+  .crosshair {
+    position: fixed;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .ch-h {
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(255,255,255,0.04);
+    transform: translateY(-50%);
+  }
+  .ch-v {
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(255,255,255,0.04);
+    transform: translateX(-50%);
+  }
+
+  /* Fixation target */
+  .fixation-wrap {
+    position: relative;
+    width: 140px;
+    height: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+  }
+
+  .fixation-ring-outer {
+    position: absolute;
+    width: 130px; height: 130px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 50%;
+    animation: breathe 4s ease-in-out infinite;
+  }
+  .fixation-ring {
+    position: absolute;
+    width: 72px; height: 72px;
+    border: 1.5px solid rgba(255,255,255,0.18);
+    border-radius: 50%;
+  }
+  .fixation-dot {
+    position: absolute;
+    width: 16px; height: 16px;
+    background: #ff3a5c;
+    border-radius: 50%;
+    box-shadow: 0 0 0 4px rgba(255,58,92,0.35), 0 0 18px rgba(255,58,92,0.3);
+    z-index: 3;
+    transition: box-shadow 0.2s;
+  }
+  .fixation-dot.pulse {
+    box-shadow: 0 0 0 8px rgba(255,58,92,0.6), 0 0 28px rgba(255,58,92,0.5);
+  }
+  @keyframes breathe {
+    0%,100% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.05); opacity: 0.8; }
+  }
+
+  .instruction {
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.25);
+    z-index: 2;
+    text-align: center;
+  }
+
+  /* Init overlay */
+  #initOverlay {
+    width: 100%;
+    max-width: 420px;
+    padding: 36px 32px;
+    background: rgba(14,15,24,0.95);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px;
+  }
+  .init-title {
+    font-family: var(--sans);
+    font-size: 22px;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  .init-title span { color: var(--accent); }
+  .init-sub {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+  .steps { display: flex; flex-direction: column; gap: 14px; }
+  .step { display: flex; flex-direction: column; gap: 5px; }
+  .step-hd { display: flex; align-items: center; gap: 9px; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+  .ico {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 1.5px solid var(--muted); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 9px;
+    transition: all 0.3s;
+  }
+  .ico.spin { border-color: var(--accent); border-top-color: transparent; animation: sp 0.7s linear infinite; }
+  .ico.ok   { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+  .ico.err  { border-color: var(--danger);  background: rgba(255,58,92,0.12);  color: var(--danger); }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .slbl { color: var(--muted); transition: color 0.3s; font-size: 10px; letter-spacing: 1px; }
+  .slbl.run { color: var(--text); }
+  .slbl.ok  { color: var(--accent); }
+  .slbl.err { color: var(--danger); }
+  .sbar { height: 2px; background: rgba(255,255,255,0.05); border-radius: 1px; overflow: hidden; margin-left: 27px; }
+  .sfill { height: 100%; background: var(--accent); border-radius: 1px; width: 0%; transition: width 0.4s ease; }
+  .sfill.err { background: var(--danger); }
+  .sdetail { font-size: 9px; color: var(--muted); margin-left: 27px; min-height: 12px; }
+
+  .start-btn {
+    margin-top: 28px;
+    width: 100%;
+    background: var(--accent-dim);
+    border: 1px solid rgba(0,240,176,0.4);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .start-btn:hover { background: rgba(0,240,176,0.2); }
+  .start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .baseline-prompt {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .baseline-prompt.show { display: flex; }
+
+  .baseline-bar-wrap {
+    width: 240px;
+    height: 3px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  #baselineProgress { height: 100%; background: var(--warn); width: 0%; transition: width 0.1s linear; }
+  .baseline-msg {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--warn);
+    text-align: center;
+  }
+
+  .baseline-action-btn {
+    background: rgba(255,184,48,0.12);
+    border: 1px solid rgba(255,184,48,0.4);
+    color: var(--warn);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 10px 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .baseline-action-btn:hover { background: rgba(255,184,48,0.22); }
+  .baseline-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Connection status dot */
+  #connDot {
+    position: fixed;
+    top: 16px;
+    right: 18px;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    z-index: 20;
+    transition: all 0.3s;
+  }
+  #connDot.ok { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  #connDot.err { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+
+  /* Hidden video for processing */
+  #video { position: fixed; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+  #overlay { display: none; }
+
+  .err-box { display: none; margin-top: 14px; background: rgba(255,58,92,0.1); border: 1px solid var(--danger); border-radius: 4px; padding: 10px 12px; font-size: 10px; color: var(--danger); line-height: 1.9; }
+  .err-box.show { display: block; }
+</style>
+</head>
+<body>
+
+<!-- Hidden video/canvas for face tracking -->
+<video id="video" autoplay muted playsinline></video>
+<canvas id="overlay"></canvas>
+
+<!-- Connection indicator -->
+<div id="connDot" title="Doctor connection"></div>
+
+<!-- Init screen -->
+<div id="initOverlay">
+  <div class="init-title">Center<span>Gaze</span></div>
+  <div class="init-sub">Patient Session</div>
+  <div class="steps">
+    <div class="step"><div class="step-hd"><div class="ico" id="i0"></div><span class="slbl" id="l0">Camera access</span></div><div class="sbar"><div class="sfill" id="p0"></div></div><div class="sdetail" id="d0">pending</div></div>
+    <div class="step"><div class="step-hd"><div class="ico" id="i1"></div><span class="slbl" id="l1">Video stream</span></div><div class="sbar"><div class="sfill" id="p1"></div></div><div class="sdetail" id="d1">pending</div></div>
+    <div class="step"><div class="step-hd"><div class="ico" id="i2"></div><span class="slbl" id="l2">MediaPipe face mesh</span></div><div class="sbar"><div class="sfill" id="p2"></div></div><div class="sdetail" id="d2">pending</div></div>
+    <div class="step"><div class="step-hd"><div class="ico" id="i3"></div><span class="slbl" id="l3">Model ready</span></div><div class="sbar"><div class="sfill" id="p3"></div></div><div class="sdetail" id="d3">pending</div></div>
+  </div>
+  <div class="err-box" id="errBox"></div>
+  <button class="start-btn" id="startBtn" onclick="boot()">Start Session</button>
+</div>
+
+<!-- Fixation screen (shown during tracking) -->
+<div id="fixationScreen">
+  <div class="crosshair ch-h"></div>
+  <div class="crosshair ch-v"></div>
+  <div class="fixation-wrap">
+    <div class="fixation-ring-outer"></div>
+    <div class="fixation-ring"></div>
+    <div class="fixation-dot" id="fixationDot"></div>
+  </div>
+  <div class="instruction">Keep your gaze on the red dot</div>
+</div>
+
+<!-- Baseline capture prompt (shown at bottom when ready) -->
+<div class="baseline-prompt" id="baselinePrompt">
+  <div class="baseline-msg" id="baselineMsg">Look at the dot — click when ready</div>
+  <div class="baseline-bar-wrap"><div id="baselineProgress"></div></div>
+  <button class="baseline-action-btn" id="baselineBtn" onclick="startBaselineCreation()">Create Baseline</button>
+</div>
+
+<script>
+// ===== CENTERGAZE PATIENT APP =====
+// - Shows ONLY the fixation dot
+// - Runs MediaPipe face tracking invisibly in background
+// - Sends gaze data to doctor via WebSocket
+
+let faceMeshInstance = null, running = false;
+const video = document.getElementById('video');
+const cvs = document.getElementById('overlay');
+const ctx = cvs.getContext('2d');
+
+// Tracking state
+let baseline = null, baselineComplete = false;
+let baselineStartTime = null, baselineSamples = [];
+let alertThresholdDeg = 10;
+let awayStart = null, lastState = null;
+let sessionStart = null, centerMs = 0, offMs = 0, lastTick = null, alerts = 0;
+let tlHistory = [];
+let currentDeviation = 0;
+
+// Smoothing
+const EMA_ALPHA = 0.25;
+let smoothedIL = null, smoothedIR = null, smoothedILv = null, smoothedIRv = null;
+const MIN_FACE_WIDTH_RATIO = 0.18, MAX_FACE_WIDTH_RATIO = 0.42;
+const IRIS_RATIO_TO_DEGREES = 83;
+
+// ===== WebSocket =====
+let ws = null;
+let wsConnected = false;
+
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = `${proto}://${location.host}/?role=patient`;
+  ws = new WebSocket(url);
+  ws.onopen = () => {
+    wsConnected = true;
+    document.getElementById('connDot').className = 'ok';
+  };
+  ws.onclose = () => {
+    wsConnected = false;
+    document.getElementById('connDot').className = 'err';
+    setTimeout(connectWS, 3000); // auto-reconnect
+  };
+  ws.onerror = () => {
+    wsConnected = false;
+    document.getElementById('connDot').className = 'err';
+  };
+}
+connectWS();
+
+function sendGazeData(payload) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload));
+  }
+}
+
+// ===== Iris math (same as original) =====
+function irisRatio(lm, outer, inner, iris) {
+  const minX = Math.min(lm[outer].x, lm[inner].x);
+  const maxX = Math.max(lm[outer].x, lm[inner].x);
+  const w = maxX - minX;
+  return w < 0.001 ? 0.5 : (lm[iris].x - minX) / w;
+}
+function irisRatioV(lm, top, bottom, iris) {
+  const minY = Math.min(lm[top].y, lm[bottom].y);
+  const maxY = Math.max(lm[top].y, lm[bottom].y);
+  const h = maxY - minY;
+  return h < 0.001 ? 0.5 : (lm[iris].y - minY) / h;
+}
+function irisRatioDeltaToDegrees(d) { return Math.abs(d) * IRIS_RATIO_TO_DEGREES; }
+function getFaceWidth(lm) { return Math.abs(lm[263].x - lm[33].x); }
+
+function calcFaceDistance(lm) {
+  const fw = getFaceWidth(lm);
+  if (fw < MIN_FACE_WIDTH_RATIO) return 'far';
+  if (fw > MAX_FACE_WIDTH_RATIO) return 'close';
+  return 'ok';
+}
+
+function calculateDeviation(iL, iR, yaw, pitch, iLv, iRv) {
+  if (!baseline) return 0;
+  const horizIrisDeg = irisRatioDeltaToDegrees((Math.abs(iL - baseline.iL) + Math.abs(iR - baseline.iR)) / 2);
+  const iLvD = baseline.iLv !== undefined ? Math.abs(iLv - baseline.iLv) : 0;
+  const iRvD = baseline.iRv !== undefined ? Math.abs(iRv - baseline.iRv) : 0;
+  const vertIrisDeg = irisRatioDeltaToDegrees((iLvD + iRvD) / 2) * 0.7;
+  const totalIrisDeg = Math.sqrt(horizIrisDeg ** 2 + vertIrisDeg ** 2);
+  const headDeg = Math.sqrt((Math.abs(yaw - baseline.yaw)) ** 2 + (Math.abs(pitch - baseline.pitch)) ** 2);
+  let dev = (totalIrisDeg * 0.80) + (headDeg * 0.20);
+  dev = Math.min(dev, 30);
+  if (dev < 0.8) dev = 0;
+  return dev;
+}
+
+function collectBaseline(iL, iR, yaw, pitch, fw, iLv, iRv) {
+  if (baselineComplete || !baselineStartTime) return;
+  const elapsed = (Date.now() - baselineStartTime) / 1000;
+  document.getElementById('baselineProgress').style.width = Math.min(100, (elapsed / 4) * 100) + '%';
+  baselineSamples.push({ iL, iR, yaw, pitch, fw, iLv: iLv || 0.5, iRv: iRv || 0.5 });
+
+  if (elapsed >= 4.0) {
+    const med = arr => { const s = [...arr].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+    const medIL = med(baselineSamples.map(s => s.iL));
+    const medIR = med(baselineSamples.map(s => s.iR));
+    const filtered = baselineSamples.filter(s => Math.abs(s.iL - medIL) < 0.04 && Math.abs(s.iR - medIR) < 0.04);
+    const src = filtered.length >= 5 ? filtered : baselineSamples;
+    baseline = {
+      iL: med(src.map(s => s.iL)), iR: med(src.map(s => s.iR)),
+      iLv: med(src.map(s => s.iLv)), iRv: med(src.map(s => s.iRv)),
+      yaw: med(src.map(s => s.yaw)), pitch: med(src.map(s => s.pitch)),
+      faceWidth: med(src.map(s => s.fw))
+    };
+    baselineComplete = true;
+    document.getElementById('baselineProgress').style.width = '100%';
+    document.getElementById('baselineMsg').textContent = 'Baseline set — tracking active';
+    document.getElementById('baselineBtn').disabled = true;
+    document.getElementById('baselineBtn').textContent = 'Baseline Set ✓';
+    document.getElementById('baselineBtn').style.borderColor = 'var(--accent)';
+    document.getElementById('baselineBtn').style.color = 'var(--accent)';
+    document.getElementById('baselineProgress').style.background = 'var(--accent)';
+    if (!sessionStart) { sessionStart = Date.now(); setInterval(updateStats, 1000); }
+    sendGazeData({ type: 'baseline_created', ts: Date.now() });
+  }
+}
+
+function updateStats() {
+  if (!sessionStart) return;
+  const tot = Date.now() - sessionStart;
+  const s = Math.round(tot / 1000);
+  sendGazeData({ type: 'stats', sessionSec: s, centerMs, offMs, alerts });
+}
+
+function startBaselineCreation() {
+  baseline = null; baselineComplete = false; baselineSamples = []; baselineStartTime = Date.now();
+  document.getElementById('baselineProgress').style.width = '0%';
+  document.getElementById('baselineMsg').textContent = 'Look at the red dot — hold still for 4s';
+  document.getElementById('baselineBtn').disabled = true;
+  sendGazeData({ type: 'baseline_start', ts: Date.now() });
+}
+
+// Main tracking loop
+async function loop() {
+  if (!running) return;
+  cvs.width = video.videoWidth || 640;
+  cvs.height = video.videoHeight || 480;
+  ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+  try {
+    const result = await new Promise((resolve, reject) => {
+      faceMeshInstance.onResults(resolve);
+      setTimeout(() => reject(new Error('timeout')), 2000);
+      faceMeshInstance.send({ image: video }).catch(reject);
+    });
+
+    const lmList = result.multiFaceLandmarks;
+    if (lmList && lmList.length > 0) {
+      const lm = lmList[0];
+      const iL = irisRatio(lm, 33, 133, 468);
+      const iR = irisRatio(lm, 263, 362, 473);
+      const iLv = irisRatioV(lm, 159, 145, 468);
+      const iRv = irisRatioV(lm, 386, 374, 473);
+
+      if (smoothedIL === null) { smoothedIL = iL; smoothedIR = iR; smoothedILv = iLv; smoothedIRv = iRv; }
+      else {
+        smoothedIL = EMA_ALPHA * iL + (1 - EMA_ALPHA) * smoothedIL;
+        smoothedIR = EMA_ALPHA * iR + (1 - EMA_ALPHA) * smoothedIR;
+        smoothedILv = EMA_ALPHA * iLv + (1 - EMA_ALPHA) * smoothedILv;
+        smoothedIRv = EMA_ALPHA * iRv + (1 - EMA_ALPHA) * smoothedIRv;
+      }
+
+      const nx = lm[1].x, lx = lm[234].x, rx = lm[454].x;
+      const fw = Math.abs(rx - lx);
+      const yaw = fw > 0.001 ? ((nx - lx) / fw - 0.5) * 90 : 0;
+      const ny = lm[1].y, fy = lm[10].y, cy152 = lm[152].y;
+      const fh = Math.abs(cy152 - fy);
+      const pitch = fh > 0.001 ? ((ny - fy) / fh - 0.42) * 90 : 0;
+      const faceWidthRatio = getFaceWidth(lm);
+      const distanceStatus = calcFaceDistance(lm);
+
+      if (baselineStartTime && !baselineComplete) {
+        collectBaseline(smoothedIL, smoothedIR, yaw, pitch, faceWidthRatio, smoothedILv, smoothedIRv);
+      }
+
+      let deviation = 0, state = null, confidence = 0;
+
+      if (baselineComplete) {
+        deviation = calculateDeviation(smoothedIL, smoothedIR, yaw, pitch, smoothedILv, smoothedIRv);
+        currentDeviation = deviation;
+
+        const iT = 0.12, yT = 12, pT = 10;
+        const iLdev = Math.abs(smoothedIL - baseline.iL);
+        const iRdev = Math.abs(smoothedIR - baseline.iR);
+        const yawDev = Math.abs(yaw - baseline.yaw);
+        const pitchDev = Math.abs(pitch - baseline.pitch);
+        const iVdev = baseline.iLv !== undefined ? ((Math.abs(smoothedILv - baseline.iLv) + Math.abs(smoothedIRv - baseline.iRv)) / 2) : 0;
+
+        const irisScore = Math.max(0, 1 - (Math.max(iLdev, iRdev) / iT));
+        const yawScore = Math.max(0, 1 - (yawDev / yT));
+        const pitScore = Math.max(0, 1 - (pitchDev / pT));
+        confidence = 0.5 * irisScore + 0.35 * yawScore + 0.15 * pitScore;
+
+        const now = Date.now();
+        const isOff = deviation >= alertThresholdDeg || confidence < 0.80;
+        if (isOff) {
+          if (!awayStart) awayStart = now;
+          if (now - awayStart >= 50 && lastState !== 'o') {
+            lastState = 'o'; alerts++;
+            // Flash the fixation dot
+            document.getElementById('fixationDot').classList.add('pulse');
+            setTimeout(() => document.getElementById('fixationDot').classList.remove('pulse'), 300);
+          }
+          if (lastState === 'o' && lastTick) offMs += now - lastTick;
+        } else {
+          awayStart = null;
+          if (lastState !== 'c') lastState = 'c';
+          if (lastState === 'c' && lastTick) centerMs += now - lastTick;
+        }
+        state = lastState;
+
+        // Build metrics payload for doctor
+        const tot = sessionStart ? Date.now() - sessionStart : 0;
+        sendGazeData({
+          type: 'gaze',
+          ts: Date.now(),
+          deviation: +deviation.toFixed(2),
+          state,
+          confidence: +confidence.toFixed(3),
+          threshold: alertThresholdDeg,
+          distanceStatus,
+          iLdev: +iLdev.toFixed(4),
+          iRdev: +iRdev.toFixed(4),
+          iVdev: +iVdev.toFixed(4),
+          yawDev: +yawDev.toFixed(2),
+          pitchDev: +pitchDev.toFixed(2),
+          alerts,
+          sessionMs: tot,
+          centerMs,
+          offMs,
+          baselineComplete,
+          facePresent: true
+        });
+      } else {
+        sendGazeData({
+          type: 'gaze',
+          ts: Date.now(),
+          deviation: 0, state: null, confidence: 0,
+          distanceStatus, baselineComplete: false, facePresent: true,
+          threshold: alertThresholdDeg
+        });
+      }
+    } else {
+      sendGazeData({ type: 'gaze', ts: Date.now(), facePresent: false, baselineComplete, threshold: alertThresholdDeg });
+    }
+  } catch(e) { /* silent */ }
+
+  if (lastTick && lastState && baselineComplete) {
+    const dt = Date.now() - lastTick;
+    if (lastState === 'c') centerMs += dt;
+    if (lastState === 'o') offMs += dt;
+  }
+  lastTick = Date.now();
+  requestAnimationFrame(loop);
+}
+
+// Helpers
+function stepOk(n, msg) { document.getElementById('i'+n).className='ico ok'; document.getElementById('i'+n).textContent='✓'; document.getElementById('l'+n).className='slbl ok'; document.getElementById('d'+n).textContent=msg; document.getElementById('p'+n).style.width='100%'; }
+function stepErr(n, msg) { document.getElementById('i'+n).className='ico err'; document.getElementById('i'+n).textContent='✕'; document.getElementById('l'+n).className='slbl err'; document.getElementById('d'+n).textContent=msg; document.getElementById('p'+n).className='sfill err'; document.getElementById('p'+n).style.width='100%'; }
+function stepRun(n, msg) { document.getElementById('i'+n).className='ico spin'; document.getElementById('l'+n).className='slbl run'; document.getElementById('d'+n).textContent=msg; document.getElementById('p'+n).style.width='35%'; }
+function showErr(html) { const b=document.getElementById('errBox'); b.innerHTML=html; b.className='err-box show'; }
+function loadScript(src) { return new Promise((res,rej)=>{ if(document.querySelector(`script[src="${src}"]`)){res();return;} const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('Script load failed')); document.head.appendChild(s); }); }
+
+async function boot() {
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true;
+
+  stepRun(0, 'Requesting camera...');
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width:{ideal:640}, height:{ideal:480}, facingMode:'user', frameRate:{ideal:30} } });
+    stepOk(0, 'Camera granted');
+  } catch(e) { stepErr(0, e.message); showErr(`Camera access denied: ${e.message}`); btn.disabled=false; return; }
+
+  stepRun(1, 'Starting video...');
+  try {
+    video.srcObject = stream;
+    await new Promise((res,rej)=>{ video.onloadedmetadata=res; setTimeout(()=>rej(new Error('timeout')),6000); });
+    await video.play();
+    stepOk(1, 'Stream active');
+  } catch(e) { stepErr(1, e.message); btn.disabled=false; return; }
+
+  stepRun(2, 'Loading MediaPipe...');
+  try {
+    await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js');
+    stepOk(2, 'MediaPipe loaded');
+  } catch(e) { stepErr(2, e.message); btn.disabled=false; return; }
+
+  stepRun(3, 'Initializing face mesh...');
+  try {
+    faceMeshInstance = new FaceMesh({ locateFile: f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${f}` });
+    faceMeshInstance.setOptions({ maxNumFaces:1, refineLandmarks:true, minDetectionConfidence:0.6, minTrackingConfidence:0.6 });
+    await new Promise((resolve,reject)=>{
+      faceMeshInstance.onResults(resolve);
+      setTimeout(()=>reject(new Error('timeout')),10000);
+      faceMeshInstance.send({image:video}).catch(reject);
+    });
+    stepOk(3, 'Model ready');
+  } catch(e) { stepErr(3, e.message); btn.disabled=false; return; }
+
+  // Switch to fixation screen
+  document.getElementById('initOverlay').style.display = 'none';
+  document.getElementById('fixationScreen').classList.add('active');
+  document.getElementById('baselinePrompt').classList.add('show');
+  running = true;
+  sendGazeData({ type: 'session_start', ts: Date.now() });
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>

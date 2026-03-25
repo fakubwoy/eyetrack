@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CenterGaze – Doctor Monitor</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #07080d;
+    --surface: #0e0f18;
+    --surface2: #161828;
+    --border: rgba(255,255,255,0.07);
+    --accent: #00f0b0;
+    --accent-dim: rgba(0,240,176,0.10);
+    --accent-glow: rgba(0,240,176,0.25);
+    --danger: #ff3a5c;
+    --danger-dim: rgba(255,58,92,0.12);
+    --warn: #ffb830;
+    --warn-dim: rgba(255,184,48,0.12);
+    --text: #dde0f0;
+    --muted: #555a78;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center;
+    padding: 18px 16px 36px;
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(0,240,176,0.04) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 100%, rgba(0,80,200,0.05) 0%, transparent 60%);
+  }
+
+  header {
+    width: 100%; max-width: 980px;
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border); padding-bottom: 14px;
+  }
+  .logo { font-family: var(--sans); font-size: 20px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent); }
+  .badge {
+    font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--accent); border: 1px solid rgba(0,240,176,0.35);
+    padding: 3px 8px; border-radius: 2px; background: var(--accent-dim);
+  }
+  .badge.gray { color: var(--muted); border-color: rgba(255,255,255,0.1); background: transparent; }
+  .badge.doctor { color: #b48fff; border-color: rgba(180,143,255,0.35); background: rgba(180,143,255,0.08); }
+  .ml-auto { margin-left: auto; }
+
+  /* Connection status */
+  #connStatus {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .conn-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--muted);
+    transition: all 0.3s;
+  }
+  .conn-dot.connected { background: var(--accent); box-shadow: 0 0 7px var(--accent); }
+  .conn-dot.patient-online { background: #00e0ff; box-shadow: 0 0 7px #00e0ff; }
+  .conn-dot.error { background: var(--danger); box-shadow: 0 0 7px var(--danger); animation: blink 0.7s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+  /* Waiting overlay */
+  #waitOverlay {
+    width: 100%; max-width: 980px;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 320px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    flex-direction: column; gap: 18px;
+  }
+  #waitOverlay.hidden { display: none; }
+  .wait-spinner {
+    width: 44px; height: 44px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.06);
+    border-top-color: var(--accent);
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .wait-msg { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+
+  /* Main layout */
+  .main-grid {
+    width: 100%; max-width: 980px;
+    display: grid; grid-template-columns: 1fr 310px; gap: 14px;
+  }
+  .main-grid.hidden { display: none; }
+
+  /* Big state panel left */
+  .left-col { display: flex; flex-direction: column; gap: 14px; }
+
+  /* Hero state card */
+  .hero-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 28px 28px 22px;
+    display: flex; flex-direction: column; gap: 10px;
+    position: relative; overflow: hidden;
+  }
+  .hero-card::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(0,240,176,0.04), transparent 70%);
+    pointer-events: none; transition: all 0.5s;
+  }
+  .hero-card.offcenter::before { background: radial-gradient(ellipse at 50% 0%, rgba(255,58,92,0.07), transparent 70%); }
+
+  .state-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+  .state-big { font-family: var(--sans); font-size: 54px; font-weight: 800; letter-spacing: -2px; color: var(--muted); transition: color 0.3s; line-height: 1; }
+  .state-big.center { color: var(--accent); }
+  .state-big.offcenter { color: var(--danger); }
+  .state-big.warn { color: var(--warn); }
+
+  .deviation-block { text-align: right; }
+  .dev-label { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .dev-value { font-family: var(--sans); font-size: 52px; font-weight: 700; line-height: 1; color: var(--accent); transition: color 0.3s; }
+  .dev-value.warn { color: var(--warn); }
+  .dev-value.danger { color: var(--danger); }
+  .dev-unit { font-size: 16px; opacity: 0.7; }
+
+  .hero-sub {
+    font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--muted); padding-top: 6px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .hero-sub .pill {
+    background: var(--surface2); border-radius: 3px; padding: 3px 10px;
+    font-size: 9px; letter-spacing: 1px;
+  }
+  .hero-sub .pill.ok { color: var(--accent); }
+  .hero-sub .pill.warn { color: var(--warn); }
+  .hero-sub .pill.bad { color: var(--danger); }
+
+  /* Confidence bar */
+  .conf-bar-wrap { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-top: 6px; }
+  .conf-bar-fill { height: 100%; background: var(--danger); border-radius: 2px; transition: width 0.15s ease, background 0.3s; width: 0%; }
+  .conf-bar-fill.mid { background: var(--warn); }
+  .conf-bar-fill.hi { background: var(--accent); }
+
+  /* Timeline */
+  .tl-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px;
+  }
+  .plbl {
+    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .plbl::after { content:''; flex:1; height:1px; background:var(--border); }
+  .tline { display: flex; gap: 2px; height: 14px; }
+  .tseg { flex: 1; border-radius: 1px; background: var(--surface2); transition: background 0.3s; }
+  .tseg.c { background: var(--accent); opacity: 0.6; }
+  .tseg.o { background: var(--danger); opacity: 0.6; }
+
+  /* Alert feed */
+  .alert-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px; flex: 1;
+  }
+  .alert-feed { font-size: 10px; line-height: 1.9; color: var(--muted); max-height: 180px; overflow-y: auto; }
+  .alert-feed::-webkit-scrollbar { width: 2px; }
+  .alert-feed::-webkit-scrollbar-thumb { background: var(--border); }
+  .arow { display: flex; gap: 8px; }
+  .at { color: var(--muted); flex-shrink: 0; font-size: 9px; }
+  .arow.o .am { color: var(--danger); }
+  .arow.c .am { color: var(--accent); }
+  .arow.l .am { color: var(--warn); }
+  .arow.i .am { color: var(--text); }
+
+  /* Sidebar */
+  .sidebar { display: flex; flex-direction: column; gap: 12px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+
+  /* Stats grid */
+  .sgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .sbox { background: var(--surface2); border-radius: 4px; padding: 10px 10px 8px; }
+  .snum { font-family: var(--sans); font-size: 22px; font-weight: 700; color: var(--text); line-height: 1; }
+  .slbl2 { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+
+  /* Metric rows */
+  .mrow { display: flex; flex-direction: column; gap: 4px; margin-bottom: 9px; }
+  .mhd { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+  .mval { color: var(--text); font-weight: 600; }
+  .btrack { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+  .bfill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.12s ease; width: 0%; }
+  .bfill.w { background: var(--warn); }
+  .bfill.b { background: var(--danger); }
+
+  /* Alert threshold control */
+  .srow { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+  .shd { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+  .shd .thresh-val { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+
+  /* Patient status row */
+  .patient-status-row {
+    display: flex; align-items: center; gap: 8px; padding: 9px 11px;
+    background: var(--surface2); border-radius: 4px; margin-bottom: 4px;
+  }
+  .ps-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: all 0.3s; }
+  .ps-dot.active { background: #00e0ff; box-shadow: 0 0 6px #00e0ff; animation: blink 1.8s ease-in-out infinite; }
+  .ps-dot.baseline { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+  .ps-dot.tracking { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .ps-label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text); }
+  .ps-sub { font-size: 9px; color: var(--muted); margin-left: auto; }
+
+  /* Score ring */
+  #scoreRing { display: block; margin: 10px auto 4px; }
+
+  /* No-face warning */
+  #noFaceWarn {
+    display: none; position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+    background: rgba(255,184,48,0.18); border: 1px solid rgba(255,184,48,0.5);
+    padding: 8px 20px; border-radius: 20px; font-size: 10px; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--warn); z-index: 50;
+    backdrop-filter: blur(4px);
+  }
+  #noFaceWarn.show { display: block; }
+
+  button.sec {
+    width: 100%; padding: 9px; border: 1px solid var(--border); border-radius: 4px;
+    background: transparent; color: var(--text); font-family: var(--mono);
+    font-size: 10px; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; transition: all 0.2s;
+    margin-top: 8px;
+  }
+  button.sec:hover { background: var(--surface2); }
+
+  @media(max-width:680px){ .main-grid{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Center<span>Gaze</span></div>
+  <span class="badge doctor">Doctor Monitor</span>
+  <span class="badge gray">Live Patient Feed</span>
+  <div class="ml-auto" id="connStatus">
+    <div class="conn-dot" id="connDot"></div>
+    <span id="connLabel">Connecting...</span>
+  </div>
+</header>
+
+<!-- No-face warning -->
+<div id="noFaceWarn">[!] Patient face not detected</div>
+
+<!-- Waiting for patient -->
+<div id="waitOverlay">
+  <div class="wait-spinner"></div>
+  <div class="wait-msg">Waiting for patient to connect...</div>
+  <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">Share <strong style="color:var(--text)">patient URL</strong> with the patient</div>
+</div>
+
+<!-- Main dashboard (hidden until patient sends data) -->
+<div class="main-grid hidden" id="mainGrid">
+  <div class="left-col">
+
+    <!-- Hero state -->
+    <div class="hero-card" id="heroCard">
+      <div class="state-row">
+        <div>
+          <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Patient Gaze State</div>
+          <div class="state-big" id="stateBig">—</div>
+        </div>
+        <div class="deviation-block">
+          <div class="dev-label">Gaze Deviation</div>
+          <div class="dev-value" id="devValue">0.0<span class="dev-unit">°</span></div>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:4px;">
+          <span>Center confidence</span><span id="confPct">—</span>
+        </div>
+        <div class="conf-bar-wrap"><div class="conf-bar-fill" id="confFill"></div></div>
+      </div>
+      <div class="hero-sub">
+        <span id="distPill" class="pill">Distance: —</span>
+        <span id="facePill" class="pill">Face: —</span>
+        <span id="threshPill" class="pill">Threshold: 10°</span>
+        <span id="baselinePill" class="pill warn">No baseline</span>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="tl-card">
+      <div class="plbl">Last 60s Gaze Timeline</div>
+      <div class="tline" id="tline"></div>
+    </div>
+
+    <!-- Alert feed -->
+    <div class="alert-card">
+      <div class="plbl">Live Event Log</div>
+      <div class="alert-feed" id="alertFeed"></div>
+    </div>
+
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="panel">
+      <div class="plbl">Patient Status</div>
+      <div class="patient-status-row">
+        <div class="ps-dot" id="patientDot"></div>
+        <div class="ps-label" id="patientStatusLabel">Offline</div>
+        <div class="ps-sub" id="patientStatusSub">—</div>
+      </div>
+      <svg id="scoreRing" viewBox="0 0 54 54" width="54" height="54">
+        <circle cx="27" cy="27" r="22" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="4"/>
+        <circle id="scoreArc" cx="27" cy="27" r="22" fill="none" stroke="var(--muted)" stroke-width="4"
+          stroke-dasharray="138.2" stroke-dashoffset="138.2" stroke-linecap="round" transform="rotate(-90 27 27)"/>
+        <text id="scoreText" x="27" y="31" text-anchor="middle" fill="var(--text)" font-size="12" font-weight="700">—</text>
+      </svg>
+    </div>
+
+    <div class="panel">
+      <div class="plbl">Session Stats</div>
+      <div class="sgrid">
+        <div class="sbox"><div class="snum" id="sFocus">—</div><div class="slbl2">On-Center %</div></div>
+        <div class="sbox"><div class="snum" id="sAway">—</div><div class="slbl2">Off-Center %</div></div>
+        <div class="sbox"><div class="snum" id="sTime">0s</div><div class="slbl2">Session</div></div>
+        <div class="sbox"><div class="snum" id="sAlerts">0</div><div class="slbl2">Alerts</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="plbl">Live Signals</div>
+      <div class="mrow"><div class="mhd"><span>Iris H-dev (L)</span><span class="mval" id="vIL">—</span></div><div class="btrack"><div class="bfill" id="bIL"></div></div></div>
+      <div class="mrow"><div class="mhd"><span>Iris H-dev (R)</span><span class="mval" id="vIR">—</span></div><div class="btrack"><div class="bfill" id="bIR"></div></div></div>
+      <div class="mrow"><div class="mhd"><span>Iris V-dev (avg)</span><span class="mval" id="vIV">—</span></div><div class="btrack"><div class="bfill" id="bIV"></div></div></div>
+      <div class="mrow"><div class="mhd"><span>Head yaw delta</span><span class="mval" id="vYaw">—</span></div><div class="btrack"><div class="bfill" id="bYaw"></div></div></div>
+      <div class="mrow"><div class="mhd"><span>Head pitch delta</span><span class="mval" id="vPitch">—</span></div><div class="btrack"><div class="bfill" id="bPitch"></div></div></div>
+    </div>
+
+    <div class="panel">
+      <div class="plbl">Threshold Override</div>
+      <div class="srow">
+        <div class="shd"><span>Alert at (degrees)</span><span class="thresh-val" id="svDeg">10°</span></div>
+        <input type="range" id="slDeg" min="3" max="20" step="1" value="10" oninput="updateThreshDisplay(this.value)">
+      </div>
+      <div style="font-size:9px;color:var(--muted);margin-top:4px;">Note: actual threshold is set by patient app</div>
+      <button class="sec" onclick="clearFeed()">Clear Event Log</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== CENTERGAZE DOCTOR APP =====
+
+let tlHistory = [];
+let lastPatientTs = 0;
+let patientOnline = false;
+let sessionAlerts = 0;
+
+// Build timeline
+const tline = document.getElementById('tline');
+for (let i = 0; i < 60; i++) {
+  const s = document.createElement('div');
+  s.className = 'tseg';
+  tline.appendChild(s);
+}
+
+// WebSocket connection
+let ws = null;
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = `${proto}://${location.host}/?role=doctor`;
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    document.getElementById('connDot').className = 'conn-dot connected';
+    document.getElementById('connLabel').textContent = 'Connected · No patient';
+    addAlert('Doctor monitor connected — waiting for patient...', 'i');
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      handleMessage(data);
+    } catch(ex) { /* ignore */ }
+  };
+
+  ws.onclose = () => {
+    document.getElementById('connDot').className = 'conn-dot error';
+    document.getElementById('connLabel').textContent = 'Disconnected';
+    patientOnline = false;
+    setTimeout(connectWS, 3000);
+  };
+
+  ws.onerror = () => {
+    document.getElementById('connDot').className = 'conn-dot error';
+  };
+}
+connectWS();
+
+// Patient heartbeat watchdog — if no message for 4s, patient is offline
+setInterval(() => {
+  if (patientOnline && Date.now() - lastPatientTs > 4000) {
+    patientOnline = false;
+    setPatientStatus('offline', '—');
+    document.getElementById('connLabel').textContent = 'Connected · Patient offline';
+    document.getElementById('connDot').className = 'conn-dot connected';
+    addAlert('Patient disconnected', 'l');
+  }
+}, 1000);
+
+function handleMessage(d) {
+  lastPatientTs = Date.now();
+
+  if (!patientOnline) {
+    patientOnline = true;
+    document.getElementById('waitOverlay').classList.add('hidden');
+    document.getElementById('mainGrid').classList.remove('hidden');
+    document.getElementById('connDot').className = 'conn-dot patient-online';
+    document.getElementById('connLabel').textContent = 'Connected · Patient online';
+    addAlert('Patient connected and streaming', 'c');
+  }
+
+  if (d.type === 'session_start') {
+    setPatientStatus('active', 'Camera ready');
+    addAlert('Patient session started', 'i');
+  }
+
+  if (d.type === 'baseline_start') {
+    setPatientStatus('baseline', 'Creating baseline...');
+    addAlert('Patient creating baseline — look at red dot', 'l');
+  }
+
+  if (d.type === 'baseline_created') {
+    addAlert('Baseline created — tracking active', 'c');
+  }
+
+  if (d.type === 'gaze') {
+    updateDashboard(d);
+  }
+}
+
+let lastAlertState = null;
+
+function updateDashboard(d) {
+  // Patient status
+  if (!d.facePresent) {
+    document.getElementById('noFaceWarn').classList.add('show');
+    setPatientStatus('active', 'No face detected');
+  } else {
+    document.getElementById('noFaceWarn').classList.remove('show');
+  }
+
+  if (d.baselineComplete) {
+    setPatientStatus('tracking', 'Tracking active');
+  } else if (d.facePresent) {
+    setPatientStatus('active', 'Awaiting baseline');
+  }
+
+  // State
+  const heroBig = document.getElementById('stateBig');
+  const heroCard = document.getElementById('heroCard');
+  if (d.state === 'c') {
+    heroBig.className = 'state-big center'; heroBig.textContent = 'CENTERED';
+    heroCard.className = 'hero-card';
+    if (lastAlertState !== 'c') { addAlert('Gaze returned to center', 'c'); lastAlertState = 'c'; }
+  } else if (d.state === 'o') {
+    heroBig.className = 'state-big offcenter'; heroBig.textContent = 'OFF-CENTER';
+    heroCard.className = 'hero-card offcenter';
+    if (lastAlertState !== 'o') {
+      addAlert(`OFF-CENTER! Deviation: ${d.deviation.toFixed(1)}° (threshold: ${d.threshold}°)`, 'o');
+      lastAlertState = 'o';
+    }
+  } else {
+    heroBig.className = 'state-big'; heroBig.textContent = '—';
+    heroCard.className = 'hero-card';
+  }
+
+  // Deviation value
+  const devEl = document.getElementById('devValue');
+  devEl.innerHTML = `${d.deviation.toFixed(1)}<span class="dev-unit">°</span>`;
+  if (d.deviation >= d.threshold) devEl.className = 'dev-value danger';
+  else if (d.deviation >= d.threshold * 0.7) devEl.className = 'dev-value warn';
+  else devEl.className = 'dev-value';
+
+  // Confidence
+  if (d.confidence !== undefined) {
+    const pct = Math.round(d.confidence * 100);
+    document.getElementById('confPct').textContent = pct + '%';
+    const fill = document.getElementById('confFill');
+    fill.style.width = pct + '%';
+    fill.className = 'conf-bar-fill' + (d.confidence > 0.75 ? ' hi' : d.confidence > 0.4 ? ' mid' : '');
+    updateScoreRing(d.confidence);
+  }
+
+  // Pills
+  const distPill = document.getElementById('distPill');
+  if (d.distanceStatus === 'ok') { distPill.textContent = 'Distance: OK'; distPill.className = 'pill ok'; }
+  else if (d.distanceStatus === 'far') { distPill.textContent = 'Distance: Too far'; distPill.className = 'pill bad'; }
+  else if (d.distanceStatus === 'close') { distPill.textContent = 'Distance: Too close'; distPill.className = 'pill warn'; }
+  else { distPill.textContent = 'Distance: —'; distPill.className = 'pill'; }
+
+  document.getElementById('facePill').textContent = d.facePresent ? 'Face: detected' : 'Face: absent';
+  document.getElementById('facePill').className = 'pill' + (d.facePresent ? ' ok' : ' bad');
+  document.getElementById('threshPill').textContent = `Threshold: ${d.threshold}°`;
+  const bp = document.getElementById('baselinePill');
+  if (d.baselineComplete) { bp.textContent = 'Baseline: set'; bp.className = 'pill ok'; }
+  else { bp.textContent = 'No baseline'; bp.className = 'pill warn'; }
+
+  // Live signals
+  if (d.iLdev !== undefined) {
+    const iT = 0.12, yT = 12, pT = 10;
+    setMetric('vIL', 'bIL', d.iLdev.toFixed(4), d.iLdev, iT);
+    setMetric('vIR', 'bIR', d.iRdev.toFixed(4), d.iRdev, iT);
+    setMetric('vIV', 'bIV', d.iVdev.toFixed(4), d.iVdev, iT);
+    setMetric('vYaw', 'bYaw', d.yawDev.toFixed(1)+'°', d.yawDev, yT);
+    setMetric('vPitch', 'bPitch', d.pitchDev.toFixed(1)+'°', d.pitchDev, pT);
+  }
+
+  // Session stats
+  if (d.sessionMs !== undefined) {
+    const s = Math.round(d.sessionMs / 1000);
+    document.getElementById('sTime').textContent = s < 60 ? s + 's' : Math.floor(s/60)+'m'+(s%60)+'s';
+    document.getElementById('sFocus').textContent = d.sessionMs ? Math.round(d.centerMs / d.sessionMs * 100) + '%' : '—';
+    document.getElementById('sAway').textContent = d.sessionMs ? Math.round(d.offMs / d.sessionMs * 100) + '%' : '—';
+    document.getElementById('sAlerts').textContent = d.alerts || 0;
+  }
+
+  // Timeline
+  updateTimeline(d.state);
+}
+
+function setMetric(vid, bid, label, val, thresh) {
+  document.getElementById(vid).textContent = label;
+  const el = document.getElementById(bid);
+  el.style.width = Math.min(100, (val / thresh) * 100) + '%';
+  if (val > thresh) el.className = 'bfill b';
+  else if (val > thresh * 0.65) el.className = 'bfill w';
+  else el.className = 'bfill';
+}
+
+function updateScoreRing(confidence) {
+  const ARC = 138.2;
+  document.getElementById('scoreArc').style.strokeDashoffset = ARC * (1 - confidence);
+  const pct = Math.round(confidence * 100);
+  document.getElementById('scoreText').textContent = pct + '%';
+  const color = confidence > 0.75 ? 'var(--accent)' : confidence > 0.4 ? 'var(--warn)' : 'var(--danger)';
+  document.getElementById('scoreArc').style.stroke = color;
+  document.getElementById('scoreText').setAttribute('fill', color);
+}
+
+function updateTimeline(state) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const last = tlHistory[tlHistory.length - 1];
+  if (!last || last.t !== nowSec) {
+    tlHistory.push({ t: nowSec, state });
+    if (tlHistory.length > 60) tlHistory.shift();
+  }
+  const segs = tline.querySelectorAll('.tseg');
+  const arr = tlHistory.slice(-60);
+  segs.forEach((s, i) => {
+    s.className = 'tseg';
+    if (i < arr.length && arr[i].state) s.classList.add(arr[i].state);
+  });
+}
+
+function setPatientStatus(mode, sub) {
+  const dot = document.getElementById('patientDot');
+  const label = document.getElementById('patientStatusLabel');
+  const subEl = document.getElementById('patientStatusSub');
+  if (mode === 'offline') { dot.className='ps-dot'; label.textContent='Patient offline'; }
+  else if (mode === 'active') { dot.className='ps-dot active'; label.textContent='Patient online'; }
+  else if (mode === 'baseline') { dot.className='ps-dot baseline'; label.textContent='Creating baseline'; }
+  else if (mode === 'tracking') { dot.className='ps-dot tracking'; label.textContent='Tracking active'; }
+  subEl.textContent = sub || '—';
+}
+
+function addAlert(msg, cls = 'i') {
+  const feed = document.getElementById('alertFeed');
+  const t = new Date().toLocaleTimeString('en', { hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const d = document.createElement('div');
+  d.className = 'arow ' + cls;
+  d.innerHTML = `<span class="at">${t}</span><span class="am">${msg}</span>`;
+  feed.appendChild(d);
+  feed.scrollTop = feed.scrollHeight;
+  if (feed.children.length > 80) feed.removeChild(feed.children[0]);
+}
+
+function clearFeed() {
+  document.getElementById('alertFeed').innerHTML = '';
+}
+
+function updateThreshDisplay(val) {
+  document.getElementById('svDeg').textContent = val + '°';
+}
+</script>
+</body>
+</html>
