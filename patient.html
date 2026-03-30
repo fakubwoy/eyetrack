@@ -557,13 +557,13 @@
 <!-- Compass gaze arrows around the fixation dot -->
 <div id="gazeCompass">
   <div class="g-arrow" data-dir="up"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></div>
-  <div class="g-arrow" data-dir="down"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7 7"/></svg></div>
+  <div class="g-arrow" data-dir="down"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m5 12 7 7 7-7"/></svg></div>
   <div class="g-arrow" data-dir="left"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></div>
   <div class="g-arrow" data-dir="right"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
   <div class="g-arrow" data-dir="up-left"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 17 7 7"/><path d="M17 7H7v10"/></svg></div>
   <div class="g-arrow" data-dir="up-right"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></div>
-  <div class="g-arrow" data-dir="down-left"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17"/><path d="M7 7v10h10"/></svg></div>
-  <div class="g-arrow" data-dir="down-right"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10"/><path d="M17 7v10H7"/></svg></div>
+  <div class="g-arrow" data-dir="down-left"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17"/><path d="M17 7H7v10"/></svg></div>
+  <div class="g-arrow" data-dir="down-right"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10"/><path d="M7 7v10h10"/></svg></div>
 </div>
 
 <!-- VFT Start button (shown on fixation screen after baseline) -->
@@ -760,44 +760,59 @@ function getGazeDirection(iL, iR, iLv, iRv) {
 }
 
 // ===== Compass Gaze Direction System =====
+// Uses a sliding-window majority vote to eliminate spastic single-frame changes.
+// In single-eye mode the iris signal can be noisier, so we use a longer vote
+// window and a longer hold before snapping back to "center".
 const COMPASS_ELS = {};
 document.querySelectorAll('.g-arrow').forEach(el => {
   COMPASS_ELS[el.dataset.dir] = el;
 });
 
-const GAZE_STABLE_FRAMES = 4;
-const GAZE_HOLD_FRAMES   = 6;
-let gazeVoteDir = 'center';
-let gazeVoteCount = 0;
+// Vote window: how many consecutive same-direction frames are needed to change
+// the displayed direction. Higher = smoother but slightly more latency.
+const GAZE_VOTE_WINDOW   = 6;   // frames that must agree before switching
+const GAZE_HOLD_FRAMES   = 10;  // frames to hold a non-center arrow before clearing
+
+// Rolling history buffer
+const GAZE_HISTORY_SIZE = GAZE_VOTE_WINDOW;
+let gazeHistory = [];            // ring buffer of raw directions
 let gazeDisplayDir = 'center';
-let gazeHoldCount = 0;
+let gazeHoldCount  = 0;
 
 function updateGazeArrow(rawDir) {
-  if (rawDir === gazeVoteDir) {
-    gazeVoteCount = Math.min(gazeVoteCount + 1, GAZE_STABLE_FRAMES + 1);
-  } else {
-    gazeVoteDir = rawDir;
-    gazeVoteCount = 1;
+  // Push into history, keeping only the last N frames
+  gazeHistory.push(rawDir);
+  if (gazeHistory.length > GAZE_HISTORY_SIZE) gazeHistory.shift();
+
+  // Majority vote across the history window
+  const freq = {};
+  gazeHistory.forEach(d => { freq[d] = (freq[d] || 0) + 1; });
+  let bestDir = 'center', bestCount = 0;
+  for (const [dir, cnt] of Object.entries(freq)) {
+    if (cnt > bestCount) { bestDir = dir; bestCount = cnt; }
   }
 
-  let newDisplay = gazeDisplayDir;
-
-  if (gazeVoteCount >= GAZE_STABLE_FRAMES) {
-    newDisplay = gazeVoteDir;
+  // Only switch if the winning direction has a clear majority (> 50% of frames)
+  let candidate = gazeDisplayDir;
+  if (bestCount >= Math.ceil(GAZE_HISTORY_SIZE * 0.55)) {
+    candidate = bestDir;
   }
 
-  if (newDisplay === 'center' && gazeDisplayDir !== 'center') {
+  // Apply hold logic: don't jump back to "center" until we've held the
+  // current non-center direction for GAZE_HOLD_FRAMES
+  let newDisplay = candidate;
+  if (candidate === 'center' && gazeDisplayDir !== 'center') {
     gazeHoldCount++;
     if (gazeHoldCount < GAZE_HOLD_FRAMES) {
-      newDisplay = gazeDisplayDir;
+      newDisplay = gazeDisplayDir;   // keep the arrow lit a bit longer
     } else {
       gazeHoldCount = 0;
     }
-  } else {
+  } else if (candidate !== 'center') {
     gazeHoldCount = 0;
   }
 
-  if (newDisplay === gazeDisplayDir) return; 
+  if (newDisplay === gazeDisplayDir) return;   // nothing changed — skip DOM update
   gazeDisplayDir = newDisplay;
 
   Object.entries(COMPASS_ELS).forEach(([dir, el]) => {
@@ -1027,8 +1042,18 @@ async function loop() {
 }
 
 // ===== VISUAL FIELD TEST — Adaptive Staircase =====
-const VFT_STIM_DURATION = 200; // ms
-const VFT_ISI = [800, 1400];   // ms
+// ─── Race-condition-free design ───────────────────────────────────────────
+//  Each trial has a unique numeric ID (vftCurrentTrialId).
+//  Every timeout callback checks that its ID still matches before acting.
+//  This ensures that no stale timer can interfere with a later trial.
+//  The ONLY place that calls recordVFTResponse / scheduleNext is finalizeTrial().
+//  finalizeTrial() is idempotent: it returns immediately if the trial is
+//  already finalised (hit, miss, or the VFT has been stopped).
+// ─────────────────────────────────────────────────────────────────────────
+
+const VFT_STIM_DURATION = 200; // ms stimulus on-screen
+const VFT_ISI = [800, 1400];   // inter-stimulus interval range (ms)
+const VFT_GRACE = 300;         // ms after stim-off to accept a "miss" response
 const VFT_POSITIONS = [
   { id: 'TL', label: 'Top-Left',     dx: -0.28, dy: -0.28 },
   { id: 'TR', label: 'Top-Right',    dx:  0.28, dy: -0.28 },
@@ -1115,15 +1140,56 @@ function getNextPosId() {
   return active[0].id;
 }
 
+// ── Per-trial state (single source of truth) ──────────────────────────────
 let vftRunning = false;
-let vftCurrentTrial = null;
-let vftTrialIndex = 0;
+let vftCurrentTrialId = 0;      // incremented each new trial — stale timers compare against this
+let vftActiveTrial = null;      // { id, posId, luminance, stimStart, phase: 'stim'|'grace'|'done' }
 let vftStimTimer = null;
 let vftGraceTimer = null;
 let vftIsiTimer = null;
 let vftCanvas, vftCtx2;
-let vftStimVisible = false;
+let vftTrialIndex = 0;
 let vftTrialLog = [];
+
+// Cancel ALL pending timers and mark any active trial as done.
+// Called on launchVFT() and endVFT() to guarantee a clean slate.
+function vftAbortTimers() {
+  clearTimeout(vftStimTimer);
+  clearTimeout(vftGraceTimer);
+  clearTimeout(vftIsiTimer);
+  vftStimTimer  = null;
+  vftGraceTimer = null;
+  vftIsiTimer   = null;
+  if (vftActiveTrial) { vftActiveTrial.phase = 'done'; }
+  vftActiveTrial = null;
+  vftCurrentTrialId++;   // invalidate any in-flight closures
+}
+
+// The ONE function that records a result and advances the test.
+// Guards against double-calls via the phase flag AND the trial-id check.
+function finalizeTrial(trialId, hit) {
+  // Guard 1: stale timer from a previous trial
+  if (trialId !== vftCurrentTrialId) return;
+  // Guard 2: trial already finalised (hit or miss already recorded)
+  if (!vftActiveTrial || vftActiveTrial.phase === 'done') return;
+  // Guard 3: VFT has been stopped
+  if (!vftRunning) return;
+
+  const trial = vftActiveTrial;
+  trial.phase = 'done';   // mark immediately — no re-entry possible
+
+  vftAbortTimers();       // cancel remaining timers for this trial
+
+  recordVFTResponse(trial.posId, trial.luminance, hit);
+  sendVFTTrialResult(trial, hit);
+  drawVFTScene(null, 0);  // always clear the dot
+
+  if (isVFTDone()) {
+    endVFT();
+  } else {
+    scheduleNextVFTTrial();
+  }
+}
 
 function startVFT() {
   if (vftRunning) return;
@@ -1161,17 +1227,7 @@ function startVFT() {
 }
 
 function launchVFT() {
-  clearTimeout(vftStimTimer);
-  clearTimeout(vftGraceTimer);
-  clearTimeout(vftIsiTimer);
-  vftStimTimer  = null;
-  vftGraceTimer = null;
-  vftIsiTimer   = null;
-
-  vftStimVisible = false;
-
-  if (vftCurrentTrial) { vftCurrentTrial.responded = true; }
-  vftCurrentTrial = null;
+  vftAbortTimers();   // clean slate — kills any leftover timers from a previous run
 
   vftRunning = true;
   setCompassVftMode(true);
@@ -1181,7 +1237,6 @@ function launchVFT() {
     const badge = document.getElementById('activeEyeBadge');
     const eyeSvgBadge = `<svg style="margin-right: 6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`;
     const rightEyeSvgBadge = `<svg style="margin-left: 6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`;
-    
     badge.innerHTML = activeEye === 'left' ? `${eyeSvgBadge} LEFT EYE` : `RIGHT EYE ${rightEyeSvgBadge}`;
     badge.className = 'show' + (activeEye === 'right' ? ' right' : '');
   }
@@ -1206,7 +1261,7 @@ function launchVFT() {
 }
 
 function resizeVFTCanvas() {
-  vftCanvas.width = window.innerWidth;
+  vftCanvas.width  = window.innerWidth;
   vftCanvas.height = window.innerHeight;
 }
 
@@ -1231,32 +1286,41 @@ function drawVFTScene(stimPos, luminance) {
     if (pos) {
       const sx = cx + pos.dx * W;
       const sy = cy + pos.dy * H;
-      const c = luminance;
       vftCtx2.beginPath();
       vftCtx2.arc(sx, sy, 14, 0, Math.PI * 2);
-      vftCtx2.fillStyle = `rgb(${c},${c},${c})`;
+      vftCtx2.fillStyle = `rgb(${luminance},${luminance},${luminance})`;
       vftCtx2.fill();
     }
   }
 }
 
 function scheduleNextVFTTrial() {
-  if (isVFTDone()) {
-    endVFT();
-    return;
-  }
+  if (!vftRunning) return;
+  if (isVFTDone()) { endVFT(); return; }
   const isi = VFT_ISI[0] + Math.random() * (VFT_ISI[1] - VFT_ISI[0]);
   vftIsiTimer = setTimeout(runVFTTrial, isi);
 }
 
 function runVFTTrial() {
+  if (!vftRunning) return;
+
   const posId = getNextPosId();
   if (!posId) { endVFT(); return; }
 
-  const lum = getNextLuminance(posId);
-  const trial = { posId, luminance: lum, responded: false, rt: null, stimStart: Date.now() };
-  vftCurrentTrial = trial;
-  vftStimVisible = true;
+  // Assign a fresh trial ID — all closures capture this and check it before acting
+  vftCurrentTrialId++;
+  const myTrialId = vftCurrentTrialId;
+
+  const lum  = getNextLuminance(posId);
+  const trial = {
+    id:        myTrialId,
+    posId,
+    luminance: lum,
+    rt:        null,
+    stimStart: Date.now(),
+    phase:     'stim'    // 'stim' → 'grace' → 'done'
+  };
+  vftActiveTrial = trial;
 
   drawVFTScene(posId, lum);
 
@@ -1264,28 +1328,24 @@ function runVFTTrial() {
   const estTotal = vftEstimatedTotal();
   const pct = Math.min(99, (totalResponses / estTotal) * 100);
   document.getElementById('vftProgressFill').style.width = pct + '%';
-
   vftTrialIndex = totalResponses + 1;
 
-  sendGazeData({
-    type: 'vft_stim',
-    trialIndex: totalResponses,
-    posId,
-    luminance: lum,
-    ts: Date.now()
-  });
+  sendGazeData({ type: 'vft_stim', trialIndex: totalResponses, posId, luminance: lum, ts: Date.now() });
 
+  // After STIM_DURATION: hide the dot, enter grace period
   vftStimTimer = setTimeout(() => {
-    vftStimVisible = false;
-    drawVFTScene(null, 0);
+    if (myTrialId !== vftCurrentTrialId) return;   // stale — another trial started
+    if (!vftActiveTrial || vftActiveTrial.phase !== 'stim') return;
+
+    vftActiveTrial.phase = 'grace';
+    drawVFTScene(null, 0);   // hide stimulus dot
+
+    // After GRACE ms with no response → register as MISS
     vftGraceTimer = setTimeout(() => {
-      if (!trial.responded) {
-        trial.responded = true;
-        recordVFTResponse(trial.posId, lum, false);
-        sendVFTTrialResult(trial, false);
-        scheduleNextVFTTrial();
-      }
-    }, 300);
+      if (myTrialId !== vftCurrentTrialId) return;
+      finalizeTrial(myTrialId, false);   // MISS
+    }, VFT_GRACE);
+
   }, VFT_STIM_DURATION);
 }
 
@@ -1293,27 +1353,35 @@ function onVFTKey(e) {
   if (e.code !== 'Space') return;
   e.preventDefault();
 
+  // Always show the visual flash feedback
   const flash = document.getElementById('spaceFlash');
   flash.classList.add('flash');
   setTimeout(() => flash.classList.remove('flash'), 100);
 
-  if (vftCurrentTrial && !vftCurrentTrial.responded) {
-    const rt = Date.now() - vftCurrentTrial.stimStart;
+  // Silently ignore if no trial is running yet, or if the stim hasn't appeared yet
+  if (!vftRunning || !vftActiveTrial) return;
+  if (vftActiveTrial.phase === 'done') return;
 
-    if (rt < 100) return;
+  // Only count as a HIT if the stimulus is currently visible OR we're in the grace window
+  const phase = vftActiveTrial.phase; // 'stim' or 'grace'
+  if (phase !== 'stim' && phase !== 'grace') return;
 
-    vftCurrentTrial.responded = true;
-    vftCurrentTrial.rt = rt;
-    recordVFTResponse(vftCurrentTrial.posId, vftCurrentTrial.luminance, true);
-    sendVFTTrialResult(vftCurrentTrial, true);
-    
-    clearTimeout(vftStimTimer);
-    clearTimeout(vftGraceTimer);
-    
-    vftStimVisible = false;
-    drawVFTScene(null, 0);
-    scheduleNextVFTTrial();
+  const rt = Date.now() - vftActiveTrial.stimStart;
+  // Ignore implausibly fast responses (< 100 ms) — these are likely accidental
+  if (rt < 100) return;
+
+  // Only credit a HIT if the dot was visible when the patient pressed space
+  // If the dot has already hidden (grace phase) this counts as a false-positive press
+  // and we do NOT record it as a hit — prevents gaming and handles mis-clicks
+  if (phase === 'grace') {
+    // Dot already gone — press happened after stim window; treat as a miss
+    // (The grace timer will naturally fire the miss — just ignore this keypress)
+    return;
   }
+
+  // phase === 'stim': dot is visible right now — record as HIT
+  vftActiveTrial.rt = rt;
+  finalizeTrial(vftActiveTrial.id, true);
 }
 
 function sendVFTTrialResult(trial, hit) {
@@ -1352,7 +1420,8 @@ function sendVFTTrialResult(trial, hit) {
 }
 
 function endVFT() {
-  vftRunning = false;
+  vftRunning = false;    // set BEFORE vftAbortTimers so any in-flight finalizeTrial guards bail out
+  vftAbortTimers();      // cancel all pending timers, clean up trial state
   setCompassVftMode(false);
   document.removeEventListener('keydown', onVFTKey);
 
