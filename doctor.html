@@ -133,63 +133,11 @@
   .conf-bar-fill.mid { background: var(--warn); }
   .conf-bar-fill.hi { background: var(--accent); }
 
-  /* ===== LIVE CAMERA FEED ===== */
   .cam-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
     padding: 14px;
     display: flex; flex-direction: column; gap: 10px;
   }
-  .cam-wrap {
-    position: relative;
-    border-radius: 6px;
-    overflow: hidden;
-    background: #000;
-    aspect-ratio: 4/3;
-  }
-  #camFeed {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    border-radius: 6px;
-  }
-  /* High-quality canvas renderer replaces img */
-  #camCanvas {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    border-radius: 6px;
-    image-rendering: auto;
-  }
-  .cam-overlay-info {
-    position: absolute;
-    bottom: 8px; left: 8px;
-    display: flex; gap: 6px; align-items: center;
-    background: rgba(0,0,0,0.72);
-    padding: 4px 8px;
-    border-radius: 4px;
-    backdrop-filter: blur(4px);
-  }
-  .cam-rec-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--danger);
-    animation: blink 1.2s ease-in-out infinite;
-  }
-  .cam-rec-label { font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.7); }
-  .cam-stats-overlay {
-    position: absolute;
-    top: 8px; right: 8px;
-    display: flex; gap: 5px; flex-direction: column; align-items: flex-end;
-  }
-  .cam-stat-pill {
-    background: rgba(0,0,0,0.72);
-    padding: 3px 7px; border-radius: 3px;
-    font-size: 8px; letter-spacing: 1px; text-transform: uppercase;
-    color: rgba(255,255,255,0.55);
-    backdrop-filter: blur(4px);
-  }
-  .cam-stat-pill span { color: var(--accent); font-weight: 700; }
 
   /* Gaze direction display */
   .gaze-dir-block {
@@ -363,6 +311,81 @@
   .csv-btn:hover { background: rgba(180,143,255,0.22); }
   .csv-btn.show { display: block; }
 
+  /* ===== EYE-AWARE VFT STYLES ===== */
+  .eye-tab-row {
+    display: flex; gap: 6px; margin-bottom: 10px;
+  }
+  .eye-tab {
+    flex: 1; padding: 7px 0;
+    font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase;
+    text-align: center; border-radius: 4px;
+    border: 1px solid var(--border);
+    color: var(--muted); background: var(--surface2);
+    transition: all 0.3s;
+  }
+  .eye-tab.active-left {
+    border-color: rgba(0,240,176,0.4); color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .eye-tab.active-right {
+    border-color: rgba(180,143,255,0.4); color: var(--purple);
+    background: var(--purple-dim);
+  }
+  .eye-tab.done { opacity: 0.55; }
+  .eye-tab.done::after { content: ' ✓'; }
+
+  .eye-result-block {
+    background: var(--surface2); border-radius: 5px; padding: 9px 10px;
+    margin-bottom: 8px; border: 1px solid transparent;
+    transition: border-color 0.3s;
+  }
+  .eye-result-block.left-block { border-color: rgba(0,240,176,0.15); }
+  .eye-result-block.right-block { border-color: rgba(180,143,255,0.15); }
+  .eye-block-hd {
+    font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase;
+    margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+  }
+  .eye-block-hd .eye-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  }
+  .eye-dot.left { background: var(--accent); }
+  .eye-dot.right { background: var(--purple); }
+
+  /* Threshold bars dual-eye view */
+  .dual-thresh-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 5px;
+    margin-bottom: 8px;
+  }
+  .dual-thresh-cell {
+    background: var(--surface2); border-radius: 4px; padding: 7px 8px;
+    border: 1px solid var(--border);
+  }
+  .dual-thresh-pos {
+    font-size: 8px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 5px;
+  }
+  .dual-thresh-vals { display: flex; flex-direction: column; gap: 3px; }
+  .dual-thresh-eye-row { display: flex; justify-content: space-between; align-items: center; font-size: 9px; }
+  .dt-eye-lbl { color: var(--muted); font-size: 8px; letter-spacing: 1px; }
+  .dt-val-left { color: var(--accent); font-weight: 600; }
+  .dt-val-right { color: var(--purple); font-weight: 600; }
+  .dual-thresh-bar { height: 2px; background: var(--surface); border-radius: 1px; overflow: hidden; margin-top: 2px; }
+  .dual-thresh-fill-left { height: 100%; border-radius: 1px; background: var(--accent); display: inline-block; }
+  .dual-thresh-fill-right { height: 100%; border-radius: 1px; background: var(--purple); display: inline-block; }
+
+  .csv-btn-combined {
+    width: 100%; margin-top: 6px; padding: 9px;
+    background: rgba(0,240,176,0.08);
+    border: 1px solid rgba(0,240,176,0.35);
+    color: var(--accent);
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    border-radius: 4px; cursor: pointer; transition: background 0.2s;
+    display: none;
+  }
+  .csv-btn-combined:hover { background: rgba(0,240,176,0.18); }
+  .csv-btn-combined.show { display: block; }
+
   /* Threshold control */
   .srow { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
   .shd { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
@@ -404,7 +427,6 @@
 <header>
   <div class="logo">Center<span>Gaze</span></div>
   <span class="badge doctor">Doctor Monitor</span>
-  <span class="badge gray">Live Patient Feed</span>
   <div class="ml-auto" id="connStatus">
     <div class="conn-dot" id="connDot"></div>
     <span id="connLabel">Connecting...</span>
@@ -476,22 +498,6 @@
       </div>
     </div>
 
-    <!-- Live Camera Feed -->
-    <div class="cam-card">
-      <div class="plbl">Live Camera Feed</div>
-      <div class="cam-wrap">
-        <canvas id="camCanvas"></canvas>
-        <div class="cam-overlay-info">
-          <div class="cam-rec-dot"></div>
-          <div class="cam-rec-label">Live</div>
-        </div>
-        <div class="cam-stats-overlay">
-          <div class="cam-stat-pill">FPS <span id="camFpsLabel">—</span></div>
-          <div class="cam-stat-pill">Q <span id="camQLabel">—</span></div>
-        </div>
-      </div>
-    </div>
-
     <!-- Timeline -->
     <div class="tl-card">
       <div class="plbl">Last 60s Gaze Timeline</div>
@@ -545,13 +551,93 @@
     <!-- ===== VISUAL FIELD TEST PANEL ===== -->
     <div class="vft-panel">
       <div class="plbl">Visual Field Test</div>
+
+      <!-- Eye status tabs -->
+      <div class="eye-tab-row">
+        <div class="eye-tab" id="eyeTabLeft">👁 Left Eye</div>
+        <div class="eye-tab" id="eyeTabRight">Right Eye 👁</div>
+      </div>
+
       <div class="vft-status-row">
         <div class="vft-status-dot" id="vftDot"></div>
         <div class="vft-status-label" id="vftStatusLabel">Awaiting test</div>
         <div class="vft-status-sub" id="vftStatusSub">—</div>
       </div>
 
-      <!-- Corner map -->
+      <!-- Dual-eye threshold grid (4 positions × 2 eyes) -->
+      <div style="font-size:9px;color:var(--muted);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;">Sensitivity thresholds (0–255)</div>
+      <div class="dual-thresh-grid">
+        <div class="dual-thresh-cell">
+          <div class="dual-thresh-pos">Top-Left</div>
+          <div class="dual-thresh-vals">
+            <div class="dual-thresh-eye-row">
+              <span class="dt-eye-lbl">L</span><span class="dt-val-left" id="dthTL_L">—</span>
+            </div>
+            <div class="dual-thresh-bar" style="position:relative;height:2px;background:var(--surface);border-radius:1px;overflow:hidden;">
+              <div style="height:100%;background:var(--accent);border-radius:1px;transition:width 0.4s;" id="dthFillTL_L"></div>
+            </div>
+            <div class="dual-thresh-eye-row" style="margin-top:3px;">
+              <span class="dt-eye-lbl">R</span><span class="dt-val-right" id="dthTL_R">—</span>
+            </div>
+            <div class="dual-thresh-bar" style="position:relative;height:2px;background:var(--surface);border-radius:1px;overflow:hidden;">
+              <div style="height:100%;background:var(--purple);border-radius:1px;transition:width 0.4s;" id="dthFillTL_R"></div>
+            </div>
+          </div>
+        </div>
+        <div class="dual-thresh-cell">
+          <div class="dual-thresh-pos">Top-Right</div>
+          <div class="dual-thresh-vals">
+            <div class="dual-thresh-eye-row">
+              <span class="dt-eye-lbl">L</span><span class="dt-val-left" id="dthTR_L">—</span>
+            </div>
+            <div class="dual-thresh-bar" style="position:relative;height:2px;background:var(--surface);border-radius:1px;overflow:hidden;">
+              <div style="height:100%;background:var(--accent);border-radius:1px;transition:width 0.4s;" id="dthFillTR_L"></div>
+            </div>
+            <div class="dual-thresh-eye-row" style="margin-top:3px;">
+              <span class="dt-eye-lbl">R</span><span class="dt-val-right" id="dthTR_R">—</span>
+            </div>
+            <div class="dual-thresh-bar" style="position:relative;height:2px;background:var(--surface);border-radius:1px;overflow:hidden;">
+              <div style="height:100%;background:var(--purple);border-radius:1px;transition:width 0.4s;" id="dthFillTR_R"></div>
+            </div>
+          </div>
+        </div>
+        <div class="dual-thresh-cell">
+          <div class="dual-thresh-pos">Bottom-Left</div>
+          <div class="dual-thresh-vals">
+            <div class="dual-thresh-eye-row">
+              <span class="dt-eye-lbl">L</span><span class="dt-val-left" id="dthBL_L">—</span>
+            </div>
+            <div class="dual-thresh-bar" style="position:relative;height:2px;background:var(--surface);border-radius:1px;overflow:hidden;">
+              <div style="height:100%;background:var(--accent);border-radius:1px;transition:width 0.4s;" id="dthFillBL_L"></div>
+            </div>
+            <div class="dual-thresh-eye-row" style="margin-top:3px;">
+              <span class="dt-eye-lbl">R</span><span class="dt-val-right" id="dthBL_R">—</span>
+            </div>
+            <div class="dual-thresh-bar" style="position:relative;height:2px;background:var(--surface);border-radius:1px;overflow:hidden;">
+              <div style="height:100%;background:var(--purple);border-radius:1px;transition:width 0.4s;" id="dthFillBL_R"></div>
+            </div>
+          </div>
+        </div>
+        <div class="dual-thresh-cell">
+          <div class="dual-thresh-pos">Bottom-Right</div>
+          <div class="dual-thresh-vals">
+            <div class="dual-thresh-eye-row">
+              <span class="dt-eye-lbl">L</span><span class="dt-val-left" id="dthBR_L">—</span>
+            </div>
+            <div class="dual-thresh-bar" style="position:relative;height:2px;background:var(--surface);border-radius:1px;overflow:hidden;">
+              <div style="height:100%;background:var(--accent);border-radius:1px;transition:width 0.4s;" id="dthFillBR_L"></div>
+            </div>
+            <div class="dual-thresh-eye-row" style="margin-top:3px;">
+              <span class="dt-eye-lbl">R</span><span class="dt-val-right" id="dthBR_R">—</span>
+            </div>
+            <div class="dual-thresh-bar" style="position:relative;height:2px;background:var(--surface);border-radius:1px;overflow:hidden;">
+              <div style="height:100%;background:var(--purple);border-radius:1px;transition:width 0.4s;" id="dthFillBR_R"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Corner map (shows active eye's live positions) -->
       <div class="vft-map-wrap">
         <div class="vft-map" id="vftMap">
           <div class="vft-center-dot"></div>
@@ -560,31 +646,16 @@
           <div class="vft-corner" data-pos="BL" id="vftCornerBL">BL</div>
           <div class="vft-corner" data-pos="BR" id="vftCornerBR">BR</div>
         </div>
-
-        <div class="vft-thresholds" style="flex:1;">
-          <div class="vft-thresh-row">
-            <div class="vft-thresh-hd"><span>Top-Left</span><span class="vft-thresh-val" id="vftThTL">—</span></div>
-            <div class="vft-thresh-track"><div class="vft-thresh-fill" id="vftFillTL"></div></div>
-          </div>
-          <div class="vft-thresh-row">
-            <div class="vft-thresh-hd"><span>Top-Right</span><span class="vft-thresh-val" id="vftThTR">—</span></div>
-            <div class="vft-thresh-track"><div class="vft-thresh-fill" id="vftFillTR"></div></div>
-          </div>
-          <div class="vft-thresh-row">
-            <div class="vft-thresh-hd"><span>Bottom-Left</span><span class="vft-thresh-val" id="vftThBL">—</span></div>
-            <div class="vft-thresh-track"><div class="vft-thresh-fill" id="vftFillBL"></div></div>
-          </div>
-          <div class="vft-thresh-row">
-            <div class="vft-thresh-hd"><span>Bottom-Right</span><span class="vft-thresh-val" id="vftThBR">—</span></div>
-            <div class="vft-thresh-track"><div class="vft-thresh-fill" id="vftFillBR"></div></div>
-          </div>
-        </div>
+        <div style="flex:1;font-size:9px;color:var(--muted);line-height:2;" id="vftLiveLog">Awaiting test...</div>
       </div>
 
       <div style="font-size:9px;color:var(--muted);margin-bottom:6px;">Test progress</div>
       <div class="vft-progress-wrap"><div id="vftProgressFill2"></div></div>
       <div style="font-size:9px;color:var(--muted);margin-top:6px;" id="vftTrialCount">0 / 0 trials</div>
-      <button class="csv-btn" id="csvDownloadBtn" onclick="downloadVFTCSV()">⬇ Download Test CSV</button>
+
+      <!-- Per-eye download buttons -->
+      <button class="csv-btn" id="csvDownloadBtn" onclick="downloadVFTCSV('last')">⬇ Download Eye CSV</button>
+      <button class="csv-btn-combined" id="csvCombinedBtn" onclick="downloadVFTCSV('combined')">⬇ Download Combined CSV (Both Eyes)</button>
     </div>
 
     <div class="panel">
@@ -607,63 +678,18 @@ let lastPatientTs = 0;
 let patientOnline = false;
 let vftTrialCount = 0;
 let vftTotalTrials = 0;
-let currentVFTStim = null; // { posId, luminance }
-let vftLastTrialLog = [];  // trial-by-trial data from last completed test
-let vftLastThresholds = {}; // final thresholds from last completed test
+let currentVFTStim = null; 
+let vftLastTrialLog = [];      
+let vftLastThresholds = {};    
+let vftCumulativeLog = [];     
+let vftEyeThresholds = { left: {}, right: {} }; 
+let currentTestEye = null;     
 
 // Build timeline
 const tline = document.getElementById('tline');
 for (let i = 0; i < 60; i++) {
   const s = document.createElement('div'); s.className = 'tseg'; tline.appendChild(s);
 }
-
-// ===== High-quality canvas camera renderer =====
-const camCanvas = document.getElementById('camCanvas');
-const camCtx = camCanvas.getContext('2d');
-let camFrameCount = 0, camLastFpsTs = Date.now(), camDisplayFps = 0;
-// Use a latest-frame queue: if a new frame arrives before onload fires,
-// stash it so we never block but never accumulate unbounded backlog.
-let camImg = new Image();
-let camNextSrc = null;  // latest queued frame (only ever keep the most recent)
-let camDecoding = false;
-
-camImg.onload = () => {
-  // Match canvas to incoming resolution
-  if (camCanvas.width !== camImg.naturalWidth || camCanvas.height !== camImg.naturalHeight) {
-    camCanvas.width = camImg.naturalWidth;
-    camCanvas.height = camImg.naturalHeight;
-  }
-  camCtx.drawImage(camImg, 0, 0);
-
-  // FPS tracking
-  camFrameCount++;
-  const now = Date.now();
-  if (now - camLastFpsTs >= 1000) {
-    camDisplayFps = Math.round(camFrameCount / ((now - camLastFpsTs) / 1000));
-    camFrameCount = 0;
-    camLastFpsTs = now;
-    document.getElementById('camFpsLabel').textContent = camDisplayFps;
-  }
-
-  // If a newer frame arrived while decoding, render it now instead of going idle
-  if (camNextSrc) {
-    const src = camNextSrc;
-    camNextSrc = null;
-    camImg.src = src;  // camDecoding stays true
-  } else {
-    camDecoding = false;
-  }
-};
-
-function renderCamFrame(dataUrl) {
-  if (camDecoding) {
-    camNextSrc = dataUrl;  // stash latest; previous pending (if any) is discarded
-    return;
-  }
-  camDecoding = true;
-  camImg.src = dataUrl;
-}
-
 
 // WebSocket connection
 let ws = null;
@@ -728,17 +754,17 @@ function handleMessage(d) {
     document.getElementById('mainGrid').classList.remove('hidden');
     document.getElementById('connDot').className = 'conn-dot patient-online';
     document.getElementById('connLabel').textContent = 'Connected · Patient online';
-    addAlert('Patient connected and streaming', 'c');
+    addAlert('Patient connected', 'c');
   }
 
   if (d.type === 'session_start') {
-    setPatientStatus('active', 'Camera ready');
+    setPatientStatus('active', 'Patient joined');
     addAlert('Patient session started', 'i');
   }
 
   if (d.type === 'baseline_start') {
     setPatientStatus('baseline', 'Creating baseline...');
-    addAlert('Patient creating baseline — look at red dot', 'l');
+    addAlert(`Patient creating baseline for ${d.eye || 'active'} eye — look at red dot`, 'l');
   }
 
   if (d.type === 'baseline_created') {
@@ -751,42 +777,52 @@ function handleMessage(d) {
     addAlert(`Screen: ${d.screenW}×${d.screenH} px · DPR: ${d.dpr}`, 'i');
   }
 
-  if (d.type === 'cam_frame') {
-    renderCamFrame(d.frame);
-    if (d.quality) document.getElementById('camQLabel').textContent = Math.round(d.quality * 100) + '%';
-  }
-
-  if (d.type === 'cam_stats') {
-    document.getElementById('camFpsLabel').textContent = d.fps;
-    document.getElementById('camQLabel').textContent = Math.round(d.quality * 100) + '%';
-  }
-
   if (d.type === 'gaze') {
     updateDashboard(d);
   }
 
+  // ===== Eye selection event =====
+  if (d.type === 'eye_selected') {
+    currentTestEye = d.eye;
+    updateEyeTabs(d.eye, false);
+    addAlert(`Patient selected ${d.eye} eye for testing`, 'p');
+    // Reset corner map for new eye
+    ['TL','TR','BL','BR'].forEach(id => {
+      document.getElementById('vftCorner'+id).className = 'vft-corner';
+      document.getElementById('vftCorner'+id).textContent = id;
+    });
+  }
+
+  if (d.type === 'baseline_reused') {
+    addAlert(`Reusing stored baseline for ${d.eye} eye`, 'i');
+  }
+
   // ===== VFT events =====
   if (d.type === 'vft_start') {
+    currentTestEye = d.eye || currentTestEye;
     vftTotalTrials = d.totalTrials;
     vftTrialCount = 0;
     vftLastTrialLog = [];
     vftLastThresholds = {};
     document.getElementById('csvDownloadBtn').classList.remove('show');
     document.getElementById('vftDot').className = 'vft-status-dot running';
-    document.getElementById('vftStatusLabel').textContent = 'Test running';
+    const eyeLabel = currentTestEye ? ` (${currentTestEye} eye)` : '';
+    document.getElementById('vftStatusLabel').textContent = `Test running${eyeLabel}`;
     document.getElementById('vftStatusSub').textContent = `0/${vftTotalTrials}`;
     document.getElementById('vftProgressFill2').style.width = '0%';
-    addAlert('Visual field test started', 'p');
+    document.getElementById('vftLiveLog').textContent = `Testing ${currentTestEye || '?'} eye…`;
+    addAlert(`Visual field test started — ${currentTestEye || '?'} eye`, 'p');
     // Reset corners
     ['TL','TR','BL','BR'].forEach(id => {
       document.getElementById('vftCorner'+id).className = 'vft-corner';
+      document.getElementById('vftCorner'+id).textContent = id;
     });
+    updateEyeTabs(currentTestEye, false);
   }
 
   if (d.type === 'vft_stim') {
     currentVFTStim = { posId: d.posId, luminance: d.luminance };
     vftTrialCount = d.trialIndex + 1;
-    const estTotal = vftTotalTrials || '~28';
     document.getElementById('vftStatusSub').textContent = `${vftTrialCount} trials`;
     const pct = vftTotalTrials ? Math.min(99, vftTrialCount / vftTotalTrials * 100) : 0;
     document.getElementById('vftProgressFill2').style.width = pct + '%';
@@ -809,67 +845,184 @@ function handleMessage(d) {
     el.classList.remove('active');
     if (d.hit) {
       el.classList.add('hit');
-      setTimeout(() => el.classList.remove('hit'), 600);
+      setTimeout(() => { el.classList.remove('hit'); el.textContent = d.posId; }, 600);
     } else {
       el.classList.add('miss');
-      setTimeout(() => el.classList.remove('miss'), 600);
+      setTimeout(() => { el.classList.remove('miss'); el.textContent = d.posId; }, 600);
     }
     el.textContent = d.posId;
 
-    // Update thresholds
-    if (d.thresholds) updateVFTThresholds(d.thresholds);
-    addAlert(`VFT ${d.posId}: lum=${d.luminance} → ${d.hit ? 'SEEN' : 'MISSED'}${d.hit ? ` RT=${d.rt}ms` : ''}`, 'p');
+    // Update per-eye thresholds live
+    const eye = d.eye || currentTestEye;
+    if (d.thresholds && eye) updateDualEyeThresholds(eye, d.thresholds);
+    addAlert(`VFT [${eye || '?'}] ${d.posId}: lum=${d.luminance} → ${d.hit ? 'SEEN' : 'MISSED'}${d.hit ? ` RT=${d.rt}ms` : ''}`, 'p');
   }
 
   if (d.type === 'vft_complete') {
+    const eye = d.eye || currentTestEye;
     document.getElementById('vftDot').className = 'vft-status-dot done';
-    document.getElementById('vftStatusLabel').textContent = 'Test complete';
+    document.getElementById('vftStatusLabel').textContent = `${eye ? eye.charAt(0).toUpperCase()+eye.slice(1)+' eye' : ''} complete`;
     document.getElementById('vftProgressFill2').style.width = '100%';
     const total = d.totalTrials || vftTrialCount;
     document.getElementById('vftStatusSub').textContent = `${total}/${total}`;
     document.getElementById('vftTrialCount').textContent = `${total} / ${total} trials`;
     if (d.trialLog && d.trialLog.length > 0) {
       vftLastTrialLog = d.trialLog;
+      document.getElementById('csvDownloadBtn').classList.add('show');
+    }
+    if (d.cumulativeTrialLog && d.cumulativeTrialLog.length > 0) {
+      vftCumulativeLog = d.cumulativeTrialLog;
     }
     if (d.thresholds) {
+      if (eye) {
+        vftEyeThresholds[eye] = d.thresholds;
+        updateDualEyeThresholds(eye, d.thresholds);
+      }
       vftLastThresholds = d.thresholds;
-      updateVFTThresholds(d.thresholds);
       const th = d.thresholds;
       const fmt = id => (th[id] !== null && th[id] !== undefined) ? th[id] : '?';
-      addAlert(`VFT complete — TL=${fmt('TL')} TR=${fmt('TR')} BL=${fmt('BL')} BR=${fmt('BR')}`, 'p');
+      addAlert(`VFT [${eye}] complete — TL=${fmt('TL')} TR=${fmt('TR')} BL=${fmt('BL')} BR=${fmt('BR')}`, 'p');
     } else {
-      addAlert('VFT complete', 'p');
+      addAlert(`VFT [${eye}] complete`, 'p');
     }
-    // Show CSV download button once results are in
-    document.getElementById('csvDownloadBtn').classList.add('show');
+    updateEyeTabs(eye, true);
+    document.getElementById('vftLiveLog').textContent =
+      `${eye ? eye.charAt(0).toUpperCase()+eye.slice(1)+' eye' : ''} done. Awaiting second eye…`;
+  }
+
+  if (d.type === 'vft_both_complete') {
+    if (d.cumulativeTrialLog && d.cumulativeTrialLog.length > 0) {
+      vftCumulativeLog = d.cumulativeTrialLog;
+    }
+    document.getElementById('csvCombinedBtn').classList.add('show');
+    document.getElementById('vftStatusLabel').textContent = 'Both eyes complete ✓';
+    document.getElementById('vftLiveLog').textContent = 'Both eyes tested. Download combined CSV below.';
+    addAlert('Both eyes complete — combined CSV available for download', 'c');
   }
 
   if (d.type === 'vft_aborted') {
+    const eye = d.eye || currentTestEye;
     document.getElementById('vftDot').className = 'vft-status-dot';
-    document.getElementById('vftStatusLabel').textContent = 'Test aborted';
-    addAlert(`VFT aborted — ${d.trialsCompleted} trials recorded (${d.alertCount} off-centre events)`, 'o');
-    // Still store partial log if sent
+    document.getElementById('vftStatusLabel').textContent = `${eye ? eye+' eye ' : ''}Test aborted`;
+    addAlert(`VFT [${eye || '?'}] aborted — ${d.trialsCompleted} trials recorded (${d.alertCount} off-centre events)`, 'o');
     if (d.trialLog && d.trialLog.length > 0) {
       vftLastTrialLog = d.trialLog;
       document.getElementById('csvDownloadBtn').classList.add('show');
-      document.getElementById('csvDownloadBtn').textContent = '⬇ Download Partial CSV';
+      document.getElementById('csvDownloadBtn').textContent = '⬇ Download Partial Eye CSV';
     }
   }
 }
 
-function updateVFTThresholds(thresholds) {
-  ['TL','TR','BL','BR'].forEach(id => {
-    const val = thresholds[id];
-    const label = document.getElementById('vftTh'+id);
-    const fill = document.getElementById('vftFill'+id);
+function updateEyeTabs(eye, done) {
+  const leftTab  = document.getElementById('eyeTabLeft');
+  const rightTab = document.getElementById('eyeTabRight');
+  leftTab.className  = 'eye-tab';
+  rightTab.className = 'eye-tab';
+  if (done) {
+    if (eye === 'left')  { leftTab.className  = 'eye-tab done active-left'; }
+    if (eye === 'right') { rightTab.className = 'eye-tab done active-right'; }
+  } else {
+    if (eye === 'left')  { leftTab.className  = 'eye-tab active-left'; }
+    if (eye === 'right') { rightTab.className = 'eye-tab active-right'; }
+  }
+}
+
+function updateDualEyeThresholds(eye, thresholds) {
+  const suffix = eye === 'left' ? '_L' : '_R';
+  ['TL','TR','BL','BR'].forEach(pos => {
+    const val = thresholds[pos];
     if (val === null || val === undefined) return;
-    label.textContent = val + '/255';
-    const pct = (val / 255) * 100;
-    fill.style.width = pct + '%';
-    fill.className = 'vft-thresh-fill' + (val < 64 ? ' lo' : val < 128 ? ' mid' : ' hi');
+    const labelEl = document.getElementById('dth' + pos + suffix);
+    const fillEl  = document.getElementById('dthFill' + pos + suffix);
+    if (labelEl) labelEl.textContent = val + '/255';
+    if (fillEl)  fillEl.style.width = ((val / 255) * 100) + '%';
   });
 }
 
+function downloadVFTCSV(mode) {
+  const isCombined = mode === 'combined';
+  const log = isCombined ? vftCumulativeLog : vftLastTrialLog;
+  const thresholds = isCombined ? null : vftLastThresholds;
+
+  if (!log || log.length === 0) {
+    alert('No trial data available yet.');
+    return;
+  }
+
+  const escape = v => {
+    const s = String(v === null || v === undefined ? '' : v);
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  // Build header — combined CSV includes Eye column
+  const headers = [
+    'Trial #',
+    'Eye',
+    'Position ID',
+    'Position Label',
+    'Offset X (fraction of screen)',
+    'Offset Y (fraction of screen)',
+    'Luminance (0-255)',
+    'Seen (1=yes / 0=no)',
+    'Reaction Time (ms)',
+    'Timestamp (ms)'
+  ];
+
+  const rows = log.map(r => [
+    r.trial_number,
+    r.eye || '',
+    r.position_id,
+    r.position_label,
+    r.dx,
+    r.dy,
+    r.luminance,
+    r.seen,
+    r.rt_ms,
+    r.timestamp_ms
+  ].map(escape).join(','));
+
+  // Threshold summary rows
+  const threshLines = [];
+  if (isCombined) {
+    ['left','right'].forEach(eye => {
+      const th = vftEyeThresholds[eye];
+      if (!th || Object.keys(th).length === 0) return;
+      const posNames = { TL:'Top-Left', TR:'Top-Right', BL:'Bottom-Left', BR:'Bottom-Right' };
+      Object.entries(th).forEach(([id, val]) => {
+        threshLines.push(`,,FINAL THRESHOLD [${eye.toUpperCase()}] — ${posNames[id] || id},,,,${val !== null && val !== undefined ? val : '?'},,`);
+      });
+    });
+  } else if (thresholds) {
+    const posNames = { TL:'Top-Left', TR:'Top-Right', BL:'Bottom-Left', BR:'Bottom-Right' };
+    Object.entries(thresholds).forEach(([id, val]) => {
+      threshLines.push(`,,FINAL THRESHOLD — ${posNames[id] || id},,,,${val !== null && val !== undefined ? val : '?'},,`);
+    });
+  }
+
+  const csv = [
+    '# CenterGaze Visual Field Test Export',
+    `# Generated: ${new Date().toISOString()}`,
+    `# Mode: ${isCombined ? 'Both Eyes (Combined)' : 'Single Eye'}`,
+    `# Total trials: ${log.length}`,
+    '',
+    headers.map(escape).join(','),
+    ...rows,
+    '',
+    '# Final Thresholds (0-255 scale  higher = better sensitivity)',
+    ...threshLines
+  ].join('\r\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href     = url;
+  a.download = `centergaze_vft_${isCombined ? 'combined' : (currentTestEye || 'eye')}_${ts}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+}
 let lastAlertState = null;
 
 function updateDashboard(d) {
@@ -1037,73 +1190,6 @@ function addAlert(msg, cls = 'i') {
 
 function clearFeed() { document.getElementById('alertFeed').innerHTML = ''; }
 function updateThreshDisplay(val) { document.getElementById('svDeg').textContent = val + '°'; }
-
-// ===== CSV Export =====
-function downloadVFTCSV() {
-  if (!vftLastTrialLog || vftLastTrialLog.length === 0) {
-    alert('No trial data available yet.');
-    return;
-  }
-
-  // Build header
-  const headers = [
-    'Trial #',
-    'Position ID',
-    'Position Label',
-    'Offset X (fraction of screen)',
-    'Offset Y (fraction of screen)',
-    'Luminance (0-255)',
-    'Seen (1=yes / 0=no)',
-    'Reaction Time (ms)',
-    'Timestamp (ms)'
-  ];
-
-  // Build threshold summary rows (appended at bottom)
-  const threshRows = Object.entries(vftLastThresholds).map(([id, val]) => {
-    const pos = { TL:'Top-Left', TR:'Top-Right', BL:'Bottom-Left', BR:'Bottom-Right' };
-    return `,,FINAL THRESHOLD — ${pos[id] || id},,,,${val !== null && val !== undefined ? val : '?'},,`;
-  });
-
-  const escape = v => {
-    const s = String(v === null || v === undefined ? '' : v);
-    return s.includes(',') || s.includes('"') || s.includes('\n')
-      ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-
-  const rows = vftLastTrialLog.map(r => [
-    r.trial_number,
-    r.position_id,
-    r.position_label,
-    r.dx,
-    r.dy,
-    r.luminance,
-    r.seen,
-    r.rt_ms,
-    r.timestamp_ms
-  ].map(escape).join(','));
-
-  const csv = [
-    '# CenterGaze Visual Field Test Export',
-    `# Generated: ${new Date().toISOString()}`,
-    `# Total trials: ${vftLastTrialLog.length}`,
-    '',
-    headers.map(escape).join(','),
-    ...rows,
-    '',
-    '# Final Thresholds (0-255 scale  higher = better sensitivity)',
-    ...threshRows
-  ].join('\r\n');
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  a.href     = url;
-  a.download = `centergaze_vft_${ts}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
-}
 </script>
 </body>
 </html>

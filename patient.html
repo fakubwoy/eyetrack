@@ -52,8 +52,6 @@
   .ch-v { left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.04); transform: translateX(-50%); }
 
   /* Fixation target */
-  /* Fixation target — pinned to true screen center via position:fixed so it
-     never shifts when flex siblings are added/removed (e.g. baseline → VFT transition) */
   .fixation-wrap {
     position: fixed;
     top: 50%;
@@ -96,12 +94,10 @@
   @keyframes breathe { 0%,100%{transform:scale(1);opacity:0.5} 50%{transform:scale(1.05);opacity:0.8} }
 
   /* Gaze Direction Arrow */
-  /* ===== Compass arrow system ===== */
   #gazeCompass {
     position: fixed;
     top: 50%;
     left: 50%;
-    /* compass is 200px wide — center it */
     width: 200px;
     height: 200px;
     transform: translate(-50%, -50%);
@@ -128,9 +124,6 @@
     text-shadow: 0 0 16px rgba(0,240,176,0.8);
     transform: scale(1.15);
   }
-  /* Position each arrow at the correct compass point.
-     The compass div is 200×200. Center of compass = 100,100.
-     Dot radius ~70px from center. Arrow is 36×36 so offset by -18 to center it. */
   .g-arrow[data-dir="up"]         { top: 0px;   left: 82px;  }
   .g-arrow[data-dir="down"]       { bottom: 0px; left: 82px;  }
   .g-arrow[data-dir="left"]       { top: 82px;  left: 0px;   }
@@ -204,17 +197,12 @@
   .baseline-action-btn:hover { background: rgba(255,184,48,0.22); }
   .baseline-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* Connection dot */
   #connDot { position: fixed; top: 16px; right: 18px; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); z-index: 20; transition: all 0.3s; }
   #connDot.ok { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
   #connDot.err { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
 
-  /* Hidden video */
   #video { position: fixed; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
   #overlay { display: none; }
-
-  /* Camera canvas for streaming */
-  #camCanvas { display: none; }
 
   .err-box { display: none; margin-top: 14px; background: rgba(255,58,92,0.1); border: 1px solid var(--danger); border-radius: 4px; padding: 10px 12px; font-size: 10px; color: var(--danger); line-height: 1.9; }
   .err-box.show { display: block; }
@@ -230,10 +218,8 @@
   }
   #vftScreen.active { display: block; }
 
-  /* VFT peripheral dots - rendered on canvas */
   #vftCanvas { width: 100%; height: 100%; display: block; }
 
-  /* VFT UI overlay */
   #vftUI {
     position: fixed;
     bottom: 32px;
@@ -367,6 +353,149 @@
   }
   .vfti-dismiss:hover { color: rgba(255,255,255,0.45); }
 
+  /* ===== EYE SELECTION OVERLAY ===== */
+  #eyeSelectOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.96);
+    z-index: 300;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    text-align: center;
+    padding: 32px;
+  }
+  #eyeSelectOverlay.active { display: flex; }
+  .eye-sel-title {
+    font-family: var(--sans);
+    font-size: 26px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: -0.5px;
+  }
+  .eye-sel-title span { color: var(--accent); }
+  .eye-sel-sub {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    max-width: 340px;
+    line-height: 2.2;
+  }
+  .eye-sel-hint {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(255,184,48,0.75);
+    max-width: 360px;
+    line-height: 2.4;
+    background: rgba(255,184,48,0.07);
+    border: 1px solid rgba(255,184,48,0.2);
+    border-radius: 6px;
+    padding: 12px 20px;
+  }
+  .eye-sel-btns { display: flex; gap: 18px; }
+  .eye-sel-btn {
+    background: var(--accent-dim);
+    border: 1px solid rgba(0,240,176,0.4);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 18px 36px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s;
+    min-width: 160px;
+  }
+  .eye-sel-btn:hover { background: rgba(0,240,176,0.2); transform: scale(1.03); }
+  .eye-sel-btn.right-eye {
+    background: rgba(180,143,255,0.10);
+    border-color: rgba(180,143,255,0.4);
+    color: var(--purple);
+  }
+  .eye-sel-btn.right-eye:hover { background: rgba(180,143,255,0.22); }
+
+  /* Eye indicator badge shown during VFT */
+  #activeEyeBadge {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(0,0,0,0.8);
+    border: 1px solid rgba(0,240,176,0.35);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 4px;
+    z-index: 120;
+    display: none;
+  }
+  #activeEyeBadge.show { display: block; }
+  #activeEyeBadge.right { border-color: rgba(180,143,255,0.35); color: var(--purple); }
+
+  /* Eye switch prompt after first eye done */
+  #eyeSwitchOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.96);
+    z-index: 300;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    text-align: center;
+    padding: 32px;
+  }
+  #eyeSwitchOverlay.active { display: flex; }
+  .eyesw-icon { font-size: 52px; line-height: 1; }
+  .eyesw-title {
+    font-family: var(--sans);
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--accent);
+  }
+  .eyesw-body {
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    max-width: 380px;
+    line-height: 2.4;
+  }
+  .eyesw-hint {
+    font-size: 10px;
+    color: rgba(255,184,48,0.75);
+    background: rgba(255,184,48,0.07);
+    border: 1px solid rgba(255,184,48,0.2);
+    border-radius: 6px;
+    padding: 12px 24px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    max-width: 380px;
+    line-height: 2.4;
+  }
+  .eyesw-btn {
+    background: var(--accent-dim);
+    border: 1px solid rgba(0,240,176,0.4);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 16px 40px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .eyesw-btn:hover { background: rgba(0,240,176,0.2); }
+
   /* Space press flash */
   #spaceFlash {
     position: fixed;
@@ -378,25 +507,25 @@
     transition: opacity 0.1s;
   }
   #spaceFlash.flash { opacity: 1; }
+  
   /* ===== VFT countdown overlay ===== */
   #vftCountdown {
     display: none;
     position: fixed;
     inset: 0;
-    background: transparent;   /* no dark backdrop — dot stays visible */
+    background: transparent;
     z-index: 150;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 18px;
-    pointer-events: none;      /* clicks pass through during countdown */
+    pointer-events: none;
   }
   #vftCountdown.active { display: flex; }
   .cd-number {
     font-family: var(--sans);
     font-size: 110px;
     font-weight: 800;
-    /* translucent so the red dot is visible through the digit */
     color: rgba(0,240,176,0.35);
     line-height: 1;
     text-shadow:
@@ -431,7 +560,6 @@
 <!-- Hidden elements -->
 <video id="video" autoplay muted playsinline></video>
 <canvas id="overlay"></canvas>
-<canvas id="camCanvas"></canvas>
 
 <!-- Connection indicator -->
 <div id="connDot" title="Doctor connection"></div>
@@ -456,6 +584,36 @@
   <div class="cd-label">Test begins in…</div>
   <div class="cd-hint">⚠ Keep your eyes on the red dot<br>throughout the entire test</div>
 </div>
+
+<!-- Eye Selection Overlay -->
+<div id="eyeSelectOverlay">
+  <div class="eye-sel-title">Visual Field Test — <span>Eye Selection</span></div>
+  <div class="eye-sel-sub">Cover one eye with your palm or an occluder,<br>then select which eye remains <strong style="color:var(--text)">open</strong>.</div>
+  <div class="eye-sel-hint">
+    ⚠ Each eye is tested separately.<br>
+    Keep the covered eye gently closed — do not press on it.<br>
+    You will switch eyes after the first test completes.
+  </div>
+  <div class="eye-sel-btns">
+    <button class="eye-sel-btn" onclick="selectEye('left')">👁 Left Eye</button>
+    <button class="eye-sel-btn right-eye" onclick="selectEye('right')">Right Eye 👁</button>
+  </div>
+</div>
+
+<!-- Eye Switch Overlay -->
+<div id="eyeSwitchOverlay">
+  <div class="eyesw-icon">🔄</div>
+  <div class="eyesw-title">First Eye Complete!</div>
+  <div class="eyesw-body">Results for your <span id="firstEyeLabel" style="color:var(--accent)">left</span> eye have been recorded.<br>Now switch — cover your <span id="firstEyeLabel2" style="color:var(--accent)">left</span> eye and open your <span id="secondEyeLabel" style="color:var(--purple)">right</span> eye.</div>
+  <div class="eyesw-hint">
+    ⚠ Cover the tested eye with your palm.<br>
+    Keep your head still and look at the red dot.
+  </div>
+  <button class="eyesw-btn" onclick="beginSecondEye()">Ready — Start <span id="secondEyeBtnLabel">Right</span> Eye Test →</button>
+</div>
+
+<!-- Active eye badge shown during VFT -->
+<div id="activeEyeBadge">👁 LEFT EYE</div>
 
 <!-- VFT interrupted -->
 <div id="vftInterrupted">
@@ -493,7 +651,7 @@
 </div>
 
 <!-- VFT Start button (shown on fixation screen after baseline) -->
-<button id="vftStartBtn" onclick="startVFT()">Start Field Test</button>
+<button id="vftStartBtn" onclick="openEyeSelect()">Retake Field Test</button>
 
 <!-- Baseline prompt -->
 <div class="baseline-prompt" id="baselinePrompt">
@@ -519,8 +677,6 @@ let faceMeshInstance = null, running = false;
 const video = document.getElementById('video');
 const cvs = document.getElementById('overlay');
 const ctx = cvs.getContext('2d');
-const camCanvas = document.getElementById('camCanvas');
-const camCtx = camCanvas.getContext('2d');
 
 // Tracking state
 let baseline = null, baselineComplete = false;
@@ -530,13 +686,18 @@ let awayStart = null, lastState = null;
 let sessionStart = null, centerMs = 0, offMs = 0, lastTick = null, alerts = 0;
 let currentDeviation = 0;
 
+// ===== Per-eye state =====
+let activeEye = null;
+let eyeBaselines = { left: null, right: null };
+let eyesDone = { left: false, right: false };
+let cumulativeTrialLog = [];
+let firstEyeTested = null;
+
 // Smoothing
 const EMA_ALPHA = 0.25;
 let smoothedIL = null, smoothedIR = null, smoothedILv = null, smoothedIRv = null;
 const MIN_FACE_WIDTH_RATIO = 0.18, MAX_FACE_WIDTH_RATIO = 0.42;
 const IRIS_RATIO_TO_DEGREES = 83;
-
-// Gaze direction state — handled by compass system below
 
 // ===== WebSocket =====
 let ws = null;
@@ -549,7 +710,6 @@ function connectWS() {
   ws.onopen = () => {
     wsConnected = true;
     document.getElementById('connDot').className = 'ok';
-    // Send screen metrics on connect
     sendScreenMetrics();
   };
   ws.onclose = () => {
@@ -583,82 +743,6 @@ function sendScreenMetrics() {
   });
 }
 
-// ===== Adaptive High-Quality Camera Streaming =====
-let camStreamInterval = null;
-let camStreamActive = false;
-let pendingFrame = false; // back-pressure: only send when last frame is done
-
-// Target: 640×480, JPEG 0.82 quality, ~15fps
-// Adapts quality down if WebSocket send buffer grows (congestion)
-const CAM_W = 640, CAM_H = 480;
-const CAM_FPS_INTERVAL = 66; // ~15fps
-const CAM_QUALITY_DEFAULT = 0.82;
-const CAM_QUALITY_MIN = 0.55;
-let camQuality = CAM_QUALITY_DEFAULT;
-let camFramesSent = 0, camFramesDropped = 0;
-let lastFpsReport = Date.now();
-
-function startCameraStream() {
-  if (camStreamInterval) clearInterval(camStreamInterval);
-  camCanvas.width = CAM_W;
-  camCanvas.height = CAM_H;
-  camStreamActive = true;
-
-  camStreamInterval = setInterval(() => {
-    if (!wsConnected || video.readyState < 2 || !camStreamActive) return;
-
-    // Back-pressure: skip frame if WS buffer is getting large
-    const bufferKB = ws.bufferedAmount / 1024;
-    if (bufferKB > 512) {
-      camFramesDropped++;
-      // Reduce quality under pressure
-      camQuality = Math.max(CAM_QUALITY_MIN, camQuality - 0.04);
-      return;
-    }
-
-    // Gradually recover quality when buffer is clear
-    if (bufferKB < 64 && camQuality < CAM_QUALITY_DEFAULT) {
-      camQuality = Math.min(CAM_QUALITY_DEFAULT, camQuality + 0.01);
-    }
-
-    // Draw at full resolution
-    camCtx.drawImage(video, 0, 0, CAM_W, CAM_H);
-
-    // Use toBlob (async, non-blocking) when available for better performance
-    if (camCanvas.toBlob) {
-      camCanvas.toBlob((blob) => {
-        if (!blob || !wsConnected) return;
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          if (ws.readyState === WebSocket.OPEN) {
-            sendGazeData({
-              type: 'cam_frame',
-              frame: reader.result,
-              quality: +camQuality.toFixed(2),
-              ts: Date.now()
-            });
-            camFramesSent++;
-          }
-        };
-        reader.readAsDataURL(blob);
-      }, 'image/jpeg', camQuality);
-    } else {
-      // Fallback: synchronous toDataURL
-      const dataUrl = camCanvas.toDataURL('image/jpeg', camQuality);
-      sendGazeData({ type: 'cam_frame', frame: dataUrl, quality: +camQuality.toFixed(2), ts: Date.now() });
-      camFramesSent++;
-    }
-
-    // FPS reporting every 5s
-    if (Date.now() - lastFpsReport > 5000) {
-      const elapsed = (Date.now() - lastFpsReport) / 1000;
-      const fps = (camFramesSent / elapsed).toFixed(1);
-      sendGazeData({ type: 'cam_stats', fps: +fps, quality: +camQuality.toFixed(2), dropped: camFramesDropped, ts: Date.now() });
-      camFramesSent = 0; camFramesDropped = 0; lastFpsReport = Date.now();
-    }
-  }, CAM_FPS_INTERVAL);
-}
-
 // ===== Iris math =====
 function irisRatio(lm, outer, inner, iris) {
   const minX = Math.min(lm[outer].x, lm[inner].x);
@@ -684,13 +768,36 @@ function calcFaceDistance(lm) {
 
 function calculateDeviation(iL, iR, yaw, pitch, iLv, iRv) {
   if (!baseline) return 0;
-  const horizIrisDeg = irisRatioDeltaToDegrees((Math.abs(iL - baseline.iL) + Math.abs(iR - baseline.iR)) / 2);
-  const iLvD = baseline.iLv !== undefined ? Math.abs(iLv - baseline.iLv) : 0;
-  const iRvD = baseline.iRv !== undefined ? Math.abs(iRv - baseline.iRv) : 0;
-  const vertIrisDeg = irisRatioDeltaToDegrees((iLvD + iRvD) / 2) * 0.7;
+
+  let horizIrisDeg, vertIrisDeg;
+
+  if (activeEye === 'left') {
+    horizIrisDeg = irisRatioDeltaToDegrees(Math.abs(iL - baseline.iL));
+    const iLvD = baseline.iLv !== undefined ? Math.abs(iLv - baseline.iLv) : 0;
+    vertIrisDeg = irisRatioDeltaToDegrees(iLvD) * 0.7;
+  } else if (activeEye === 'right') {
+    horizIrisDeg = irisRatioDeltaToDegrees(Math.abs(iR - baseline.iR));
+    const iRvD = baseline.iRv !== undefined ? Math.abs(iRv - baseline.iRv) : 0;
+    vertIrisDeg = irisRatioDeltaToDegrees(iRvD) * 0.7;
+  } else {
+    horizIrisDeg = irisRatioDeltaToDegrees((Math.abs(iL - baseline.iL) + Math.abs(iR - baseline.iR)) / 2);
+    const iLvD = baseline.iLv !== undefined ? Math.abs(iLv - baseline.iLv) : 0;
+    const iRvD = baseline.iRv !== undefined ? Math.abs(iRv - baseline.iRv) : 0;
+    vertIrisDeg = irisRatioDeltaToDegrees((iLvD + iRvD) / 2) * 0.7;
+  }
+
   const totalIrisDeg = Math.sqrt(horizIrisDeg ** 2 + vertIrisDeg ** 2);
-  const headDeg = Math.sqrt((Math.abs(yaw - baseline.yaw)) ** 2 + (Math.abs(pitch - baseline.pitch)) ** 2);
-  let dev = (totalIrisDeg * 0.80) + (headDeg * 0.20);
+  let dev = 0;
+
+  if (activeEye) {
+    // Single eye mode: The hand covering the other eye disrupts face mesh yaw/pitch.
+    // Rely completely on iris deviation.
+    dev = totalIrisDeg;
+  } else {
+    const headDeg = Math.sqrt((Math.abs(yaw - baseline.yaw)) ** 2 + (Math.abs(pitch - baseline.pitch)) ** 2);
+    dev = (totalIrisDeg * 0.80) + (headDeg * 0.20);
+  }
+  
   dev = Math.min(dev, 30);
   if (dev < 0.8) dev = 0;
   return dev;
@@ -700,8 +807,19 @@ function getGazeDirection(iL, iR, iLv, iRv) {
   if (!baseline || !baselineComplete) return 'center';
   const HORIZ_THRESH = 0.03;
   const VERT_THRESH  = 0.025;
-  const horizDev = ((iL - baseline.iL) + (iR - baseline.iR)) / 2;
-  const vertDev  = ((iLv - baseline.iLv) + (iRv - baseline.iRv)) / 2;
+
+  let horizDev, vertDev;
+  if (activeEye === 'left') {
+    horizDev = iL - baseline.iL;
+    vertDev  = iLv - baseline.iLv;
+  } else if (activeEye === 'right') {
+    horizDev = iR - baseline.iR;
+    vertDev  = iRv - baseline.iRv;
+  } else {
+    horizDev = ((iL - baseline.iL) + (iR - baseline.iR)) / 2;
+    vertDev  = ((iLv - baseline.iLv) + (iRv - baseline.iRv)) / 2;
+  }
+
   const goRight = horizDev < -HORIZ_THRESH;
   const goLeft  = horizDev >  HORIZ_THRESH;
   const goDown  = vertDev  >  VERT_THRESH;
@@ -718,22 +836,19 @@ function getGazeDirection(iL, iR, iLv, iRv) {
 }
 
 // ===== Compass Gaze Direction System =====
-// Pre-cache all 8 arrow elements
 const COMPASS_ELS = {};
 document.querySelectorAll('.g-arrow').forEach(el => {
   COMPASS_ELS[el.dataset.dir] = el;
 });
 
-// Temporal smoothing: direction must be stable for N consecutive frames before showing
-const GAZE_STABLE_FRAMES = 4;  // ~120ms at 30fps before committing to a direction
-const GAZE_HOLD_FRAMES   = 6;  // hold direction for N frames after it changes back to center (reduces flicker)
+const GAZE_STABLE_FRAMES = 4;
+const GAZE_HOLD_FRAMES   = 6;
 let gazeVoteDir = 'center';
 let gazeVoteCount = 0;
 let gazeDisplayDir = 'center';
 let gazeHoldCount = 0;
 
 function updateGazeArrow(rawDir) {
-  // Vote accumulation — only commit when same direction holds for GAZE_STABLE_FRAMES
   if (rawDir === gazeVoteDir) {
     gazeVoteCount = Math.min(gazeVoteCount + 1, GAZE_STABLE_FRAMES + 1);
   } else {
@@ -747,11 +862,10 @@ function updateGazeArrow(rawDir) {
     newDisplay = gazeVoteDir;
   }
 
-  // Hold: don't snap back to 'center' immediately — wait GAZE_HOLD_FRAMES
   if (newDisplay === 'center' && gazeDisplayDir !== 'center') {
     gazeHoldCount++;
     if (gazeHoldCount < GAZE_HOLD_FRAMES) {
-      newDisplay = gazeDisplayDir; // keep showing previous direction briefly
+      newDisplay = gazeDisplayDir;
     } else {
       gazeHoldCount = 0;
     }
@@ -759,10 +873,9 @@ function updateGazeArrow(rawDir) {
     gazeHoldCount = 0;
   }
 
-  if (newDisplay === gazeDisplayDir) return; // no visual change needed
+  if (newDisplay === gazeDisplayDir) return; 
   gazeDisplayDir = newDisplay;
 
-  // Light up only the active arrow, dim all others
   Object.entries(COMPASS_ELS).forEach(([dir, el]) => {
     if (dir === gazeDisplayDir) {
       el.classList.add('lit');
@@ -772,10 +885,9 @@ function updateGazeArrow(rawDir) {
   });
 }
 
-// Make compass visible during VFT too (it's above vftScreen z-index via inline style when needed)
 function setCompassVftMode(active) {
   const compass = document.getElementById('gazeCompass');
-  compass.style.zIndex = active ? '115' : '10'; // above vftScreen (z=100) when testing
+  compass.style.zIndex = active ? '115' : '10';
 }
 
 // ===== Baseline =====
@@ -807,9 +919,16 @@ function collectBaseline(iL, iR, yaw, pitch, fw, iLv, iRv) {
     document.getElementById('baselineProgress').style.background = 'var(--accent)';
     if (!sessionStart) { sessionStart = Date.now(); setInterval(updateStats, 1000); }
     sendGazeData({ type: 'baseline_created', ts: Date.now() });
-    document.getElementById('baselineMsg').textContent = 'Baseline set — test starting…';
-    // Auto-launch with a short pause so the patient can read the message
-    setTimeout(() => startVFT(), 1200);
+
+    if (activeEye !== null) {
+      eyeBaselines[activeEye] = baseline;
+      document.getElementById('baselineMsg').textContent = 'Baseline set — test starting…';
+      setTimeout(() => startVFT(), 1200);
+    } else {
+      document.getElementById('baselineMsg').textContent = 'Ready — select eye to begin test';
+      document.getElementById('vftStartBtn').classList.add('show');
+      document.getElementById('vftStartBtn').textContent = 'Start Field Test';
+    }
   }
 }
 
@@ -823,19 +942,19 @@ function updateStats() {
 function startBaselineCreation() {
   baseline = null; baselineComplete = false; baselineSamples = []; baselineStartTime = Date.now();
   document.getElementById('baselineProgress').style.width = '0%';
-  document.getElementById('baselineMsg').textContent = 'Look at the red dot — hold still for 4s';
+  const eyeMsg = activeEye ? ` (${activeEye} eye)` : '';
+  document.getElementById('baselineMsg').textContent = `Look at the red dot — hold still for 4s${eyeMsg}`;
   document.getElementById('baselineBtn').disabled = true;
-  sendGazeData({ type: 'baseline_start', ts: Date.now() });
+  sendGazeData({ type: 'baseline_start', ts: Date.now(), eye: activeEye });
 }
 
 // ===== Compute face-to-screen distance in cm =====
 function estimateDistanceCm(lm) {
-  const fw = getFaceWidth(lm); // normalized 0-1 across screen width
+  const fw = getFaceWidth(lm);
   const screenWidthPx = window.innerWidth;
   const faceWidthPx = fw * screenWidthPx;
-  // Average face width ~14cm, focal length approximation
   const KNOWN_FACE_WIDTH_CM = 14;
-  const FOCAL_PX = 600; // rough estimate for typical webcam
+  const FOCAL_PX = 600;
   if (faceWidthPx < 10) return null;
   return Math.round((KNOWN_FACE_WIDTH_CM * FOCAL_PX) / faceWidthPx);
 }
@@ -890,7 +1009,6 @@ async function loop() {
         deviation = calculateDeviation(smoothedIL, smoothedIR, yaw, pitch, smoothedILv, smoothedIRv);
         currentDeviation = deviation;
 
-        // Update gaze direction arrow
         const dir = getGazeDirection(smoothedIL, smoothedIR, smoothedILv, smoothedIRv);
         updateGazeArrow(dir);
 
@@ -901,10 +1019,25 @@ async function loop() {
         const pitchDev = Math.abs(pitch - baseline.pitch);
         const iVdev = baseline.iLv !== undefined ? ((Math.abs(smoothedILv - baseline.iLv) + Math.abs(smoothedIRv - baseline.iRv)) / 2) : 0;
 
-        const irisScore = Math.max(0, 1 - (Math.max(iLdev, iRdev) / iT));
-        const yawScore = Math.max(0, 1 - (yawDev / yT));
-        const pitScore = Math.max(0, 1 - (pitchDev / pT));
-        confidence = 0.5 * irisScore + 0.35 * yawScore + 0.15 * pitScore;
+        let irisMaxDev;
+        if (activeEye === 'left') {
+          irisMaxDev = iLdev;
+        } else if (activeEye === 'right') {
+          irisMaxDev = iRdev;
+        } else {
+          irisMaxDev = Math.max(iLdev, iRdev);
+        }
+        
+        const irisScore = Math.max(0, 1 - (irisMaxDev / iT));
+
+        if (activeEye) {
+          // Hand-covered face produces chaotic yaw/pitch logic, rely solely on iris confidence
+          confidence = irisScore;
+        } else {
+          const yawScore = Math.max(0, 1 - (yawDev / yT));
+          const pitScore = Math.max(0, 1 - (pitchDev / pT));
+          confidence = 0.5 * irisScore + 0.35 * yawScore + 0.15 * pitScore;
+        }
 
         const now = Date.now();
         const isOff = deviation >= alertThresholdDeg || confidence < 0.80;
@@ -914,11 +1047,10 @@ async function loop() {
             lastState = 'o'; alerts++;
             document.getElementById('fixationDot').classList.add('pulse');
             setTimeout(() => document.getElementById('fixationDot').classList.remove('pulse'), 300);
-            // ── VFT rolling-window off-centre check ──────────────────────
+            
             if (vftRunning && vftLastAlertState !== 'o') {
               vftLastAlertState = 'o';
               vftAlertTimes.push(now);
-              // Prune timestamps older than the window
               vftAlertTimes = vftAlertTimes.filter(t => now - t <= VFT_ALERT_WINDOW);
               if (vftAlertTimes.length >= VFT_ALERT_LIMIT) {
                 abortVFT(vftAlertTimes.length);
@@ -980,14 +1112,8 @@ async function loop() {
 }
 
 // ===== VISUAL FIELD TEST — Adaptive Staircase =====
-// Uses a 4-2-1 staircase (like Humphrey) per position:
-// Start at 127 (midpoint). Step down by 16 on hit, up by 16 on miss.
-// After first reversal, halve step size. After second reversal, halve again.
-// Converges in ~6-8 trials per position vs 10 fixed.
-// Positions are interleaved round-robin so all 4 progress simultaneously.
-
 const VFT_STIM_DURATION = 200; // ms
-const VFT_ISI = [800, 1400];   // inter-stimulus interval range ms
+const VFT_ISI = [800, 1400];   // ms
 const VFT_POSITIONS = [
   { id: 'TL', label: 'Top-Left',     dx: -0.28, dy: -0.28 },
   { id: 'TR', label: 'Top-Right',    dx:  0.28, dy: -0.28 },
@@ -995,18 +1121,17 @@ const VFT_POSITIONS = [
   { id: 'BR', label: 'Bottom-Right', dx:  0.28, dy:  0.28 },
 ];
 
-// Per-position staircase state
 let vftState = {};
 
 function initVFTState() {
   VFT_POSITIONS.forEach(p => {
     vftState[p.id] = {
       lo: 0, hi: 255,
-      step: 64,          // initial step size
-      lastDir: null,     // 'up' | 'down' — direction of last step
-      reversals: 0,      // number of direction reversals so far
-      responses: [],     // { luminance, hit }
-      done: false        // converged?
+      step: 64,
+      lastDir: null,
+      reversals: 0,
+      responses: [],
+      done: false
     };
   });
 }
@@ -1015,9 +1140,7 @@ function isVFTDone() {
   return VFT_POSITIONS.every(p => vftState[p.id].done);
 }
 
-// Estimated total trials for progress display
 function vftEstimatedTotal() {
-  // roughly 7 trials per position on average
   return VFT_POSITIONS.length * 7;
 }
 
@@ -1030,9 +1153,6 @@ function recordVFTResponse(posId, luminance, hit) {
   const s = vftState[posId];
   s.responses.push({ luminance, hit });
 
-  // 1. Count reversals FIRST — so the convergence check below sees the updated count.
-  //    (Old order had reversals++ AFTER the done-check, meaning the 3rd reversal
-  //    never triggered s.reversals>=3 on the same trial it occurred.)
   const dir = hit ? 'down' : 'up';
   if (s.lastDir !== null && dir !== s.lastDir) {
     s.reversals++;
@@ -1040,21 +1160,18 @@ function recordVFTResponse(posId, luminance, hit) {
   }
   s.lastDir = dir;
 
-  // 2. Update bracket — clamp so it can only ever narrow, never invert.
   if (hit) {
     s.hi = Math.min(s.hi, luminance);
   } else {
     s.lo = Math.max(s.lo, luminance);
   }
 
-  // Safety: if bracket somehow inverted, collapse to a safe 4-unit window
   if (s.lo >= s.hi) {
     const mid = Math.round((s.lo + s.hi) / 2);
     s.lo = Math.max(0,   mid - 2);
     s.hi = Math.min(255, mid + 2);
   }
 
-  // 3. Convergence check (now uses updated reversal count and narrowed bracket)
   if ((s.hi - s.lo) <= 4 || s.reversals >= 3) {
     s.done = true;
   }
@@ -1067,39 +1184,32 @@ function getThresholdEstimate(posId) {
   const hits   = s.responses.filter(r =>  r.hit).map(r => r.luminance);
   const misses = s.responses.filter(r => !r.hit).map(r => r.luminance);
 
-  // If we only have evidence on one side so far, return the live bracket midpoint.
-  // Previously this returned sentinel extremes (255 or 0), making the doctor-side
-  // bar appear completely frozen until both a hit AND a miss had been recorded.
   if (hits.length === 0 || misses.length === 0) {
     return Math.round((s.lo + s.hi) / 2);
   }
 
-  // Both sides present: midpoint between lowest-seen and highest-missed
   const minHit  = Math.min(...hits);
   const maxMiss = Math.max(...misses);
   return Math.round((minHit + maxMiss) / 2);
 }
 
-// Build interleaved trial queue — only for positions not yet done
 function getNextPosId() {
   const active = VFT_POSITIONS.filter(p => !vftState[p.id].done);
   if (active.length === 0) return null;
-  // Round-robin: pick the position with the fewest trials so far
   active.sort((a, b) => vftState[a.id].responses.length - vftState[b.id].responses.length);
   return active[0].id;
 }
 
 let vftRunning = false;
 let vftCurrentTrial = null;
-let vftTrialIndex = 0;      // total trials run so far (for display)
+let vftTrialIndex = 0;
 let vftStimTimer = null;
 let vftGraceTimer = null;
 let vftIsiTimer = null;
 let vftCanvas, vftCtx2;
 let vftStimVisible = false;
-let vftTrialLog = [];       // per-trial records for CSV export
+let vftTrialLog = [];
 
-// Off-center abort tracking (rolling window)
 const VFT_ALERT_LIMIT  = 10;
 const VFT_ALERT_WINDOW = 10000;
 let vftAlertTimes      = [];
@@ -1107,10 +1217,17 @@ let vftLastAlertState  = null;
 
 function startVFT() {
   if (vftRunning) return;
+
+  if (eyesDone.left && eyesDone.right) {
+    cumulativeTrialLog = [];
+    eyesDone = { left: false, right: false };
+    eyeBaselines = { left: null, right: null };
+    activeEye = null;
+  }
+
   document.getElementById('vftStartBtn').classList.remove('show');
   document.getElementById('baselinePrompt').classList.remove('show');
 
-  // 3-2-1 countdown then launch
   const overlay  = document.getElementById('vftCountdown');
   const cdNumber = document.getElementById('cdNumber');
   let n = 3;
@@ -1118,7 +1235,6 @@ function startVFT() {
   overlay.classList.add('active');
 
   const tick = () => {
-    // Re-trigger pop animation
     cdNumber.style.animation = 'none';
     void cdNumber.offsetWidth;
     cdNumber.style.animation = 'cdPop 0.85s ease-out';
@@ -1135,13 +1251,6 @@ function startVFT() {
 }
 
 function launchVFT() {
-  // ── Cancel ALL pending timers from any prior run FIRST ───────────────────
-  // This is critical: stale vftStimTimer / vftGraceTimer / vftIsiTimer from
-  // a previous (aborted or completed) run can fire AFTER initVFTState() resets
-  // the bracket, causing recordVFTResponse() to corrupt the fresh staircase
-  // for whichever position fires first (almost always TL, since it leads the
-  // round-robin queue).  Clearing here — before any state mutation — ensures
-  // no stale callback can touch the new run's data.
   clearTimeout(vftStimTimer);
   clearTimeout(vftGraceTimer);
   clearTimeout(vftIsiTimer);
@@ -1149,21 +1258,20 @@ function launchVFT() {
   vftGraceTimer = null;
   vftIsiTimer   = null;
 
-  // ── Reset stim visibility BEFORE adding the key listener ─────────────────
-  // If a previous run ended mid-stim this could still be true; resetting here
-  // (before the listener is re-added) prevents the very first spacebar press
-  // of the new run from registering as a hit before any dot has appeared.
   vftStimVisible = false;
 
-  // ── Invalidate any lingering trial object from the old run ────────────────
-  // Mark it responded so that if a grace-window callback somehow still fires
-  // it will silently no-op rather than calling recordVFTResponse.
   if (vftCurrentTrial) { vftCurrentTrial.responded = true; }
   vftCurrentTrial = null;
 
   vftRunning = true;
   setCompassVftMode(true);
   document.getElementById('vftScreen').classList.add('active');
+
+  if (activeEye) {
+    const badge = document.getElementById('activeEyeBadge');
+    badge.textContent = activeEye === 'left' ? '👁 LEFT EYE' : 'RIGHT EYE 👁';
+    badge.className = 'show' + (activeEye === 'right' ? ' right' : '');
+  }
 
   vftCanvas = document.getElementById('vftCanvas');
   vftCtx2 = vftCanvas.getContext('2d');
@@ -1173,16 +1281,13 @@ function launchVFT() {
   vftTrialIndex = 0;
   vftAlertTimes = [];
   vftLastAlertState = null;
-  vftTrialLog = [];  // fresh log for this run
+  vftTrialLog = [];
 
   const estTotal = vftEstimatedTotal();
-  sendGazeData({ type: 'vft_start', ts: Date.now(), totalTrials: estTotal });
+  sendGazeData({ type: 'vft_start', eye: activeEye || 'both', ts: Date.now(), totalTrials: estTotal });
 
   drawVFTScene(null, 0);
 
-  // Remove-then-add prevents duplicate listeners stacking across retests.
-  // Each duplicate would call recordVFTResponse twice per keypress, corrupting
-  // the bracket for whichever position is active.
   document.removeEventListener('keydown', onVFTKey);
   document.addEventListener('keydown', onVFTKey);
 
@@ -1199,7 +1304,6 @@ function drawVFTScene(stimPos, luminance) {
   vftCtx2.fillStyle = '#000';
   vftCtx2.fillRect(0, 0, W, H);
 
-  // Center fixation dot — half size
   const cx = W / 2, cy = H / 2;
   vftCtx2.beginPath();
   vftCtx2.arc(cx, cy, 4, 0, Math.PI * 2);
@@ -1211,7 +1315,6 @@ function drawVFTScene(stimPos, luminance) {
   vftCtx2.lineWidth = 1.5;
   vftCtx2.stroke();
 
-  // Peripheral stimulus
   if (stimPos && luminance > 0) {
     const pos = VFT_POSITIONS.find(p => p.id === stimPos);
     if (pos) {
@@ -1246,7 +1349,6 @@ function runVFTTrial() {
 
   drawVFTScene(posId, lum);
 
-  // Progress: count total responses vs estimated total
   const totalResponses = VFT_POSITIONS.reduce((acc, p) => acc + vftState[p.id].responses.length, 0);
   const estTotal = vftEstimatedTotal();
   const pct = Math.min(99, (totalResponses / estTotal) * 100);
@@ -1265,11 +1367,8 @@ function runVFTTrial() {
   vftStimTimer = setTimeout(() => {
     vftStimVisible = false;
     drawVFTScene(null, 0);
-    // Give 300ms grace window after stim
     vftGraceTimer = setTimeout(() => {
       if (!trial.responded) {
-        console.log(`[VFT Debug] MISS - Pos: ${trial.posId} | Lum: ${lum} (Timer expired)`);
-        
         trial.responded = true;
         recordVFTResponse(trial.posId, lum, false);
         sendVFTTrialResult(trial, false);
@@ -1283,52 +1382,39 @@ function onVFTKey(e) {
   if (e.code !== 'Space') return;
   e.preventDefault();
 
-  // Flash feedback
   const flash = document.getElementById('spaceFlash');
   flash.classList.add('flash');
   setTimeout(() => flash.classList.remove('flash'), 100);
 
-  // If there's an active trial that hasn't timed out yet
   if (vftCurrentTrial && !vftCurrentTrial.responded) {
     const rt = Date.now() - vftCurrentTrial.stimStart;
 
-    // Anti-spam: ignore impossible human reaction times (< 100ms)
-    // This safely replaces the brittle absolute-time math that was failing under lag.
-    if (rt < 100) {
-      console.warn(`[VFT Debug] Ignored early predictive press (RT: ${rt}ms)`);
-      return;
-    }
-
-    console.log(`[VFT Debug] HIT  - Pos: ${vftCurrentTrial.posId} | Lum: ${vftCurrentTrial.luminance} | RT: ${rt}ms`);
+    if (rt < 100) return;
 
     vftCurrentTrial.responded = true;
     vftCurrentTrial.rt = rt;
     recordVFTResponse(vftCurrentTrial.posId, vftCurrentTrial.luminance, true);
     sendVFTTrialResult(vftCurrentTrial, true);
     
-    // Clear the timers so it doesn't trigger a miss later
     clearTimeout(vftStimTimer);
     clearTimeout(vftGraceTimer);
     
     vftStimVisible = false;
     drawVFTScene(null, 0);
     scheduleNextVFTTrial();
-  } else {
-    console.log(`[VFT Debug] Space pressed, but ignored (In Inter-Stimulus Interval)`);
   }
 }
 
 function sendVFTTrialResult(trial, hit) {
-  // Compute current threshold estimates
   const thresholds = {};
   VFT_POSITIONS.forEach(p => {
     thresholds[p.id] = getThresholdEstimate(p.id);
   });
 
-  // Record trial for CSV export
   const posInfo = VFT_POSITIONS.find(p => p.id === trial.posId);
-  vftTrialLog.push({
+  const trialEntry = {
     trial_number: vftTrialLog.length + 1,
+    eye: activeEye || 'both',
     position_id: trial.posId,
     position_label: posInfo ? posInfo.label : trial.posId,
     dx: posInfo ? posInfo.dx : '',
@@ -1337,10 +1423,13 @@ function sendVFTTrialResult(trial, hit) {
     seen: hit ? 1 : 0,
     rt_ms: hit ? (trial.rt || '') : '',
     timestamp_ms: Date.now()
-  });
+  };
+  vftTrialLog.push(trialEntry);
+  cumulativeTrialLog.push(trialEntry);
 
   sendGazeData({
     type: 'vft_response',
+    eye: activeEye || 'both',
     trialIndex: vftTrialIndex,
     posId: trial.posId,
     luminance: trial.luminance,
@@ -1357,8 +1446,6 @@ function abortVFT(alertCount) {
   setCompassVftMode(false);
   document.removeEventListener('keydown', onVFTKey);
 
-  // Cancel any pending trial timers and null them out so launchVFT's
-  // pre-clear knows there is nothing left to cancel on a retake.
   clearTimeout(vftStimTimer);  vftStimTimer  = null;
   clearTimeout(vftGraceTimer); vftGraceTimer = null;
   clearTimeout(vftIsiTimer);   vftIsiTimer   = null;
@@ -1367,6 +1454,7 @@ function abortVFT(alertCount) {
 
   sendGazeData({
     type: 'vft_aborted',
+    eye: activeEye || 'both',
     reason: 'too_many_off_center',
     alertCount,
     trialsCompleted: vftTrialIndex,
@@ -1374,12 +1462,10 @@ function abortVFT(alertCount) {
     ts: Date.now()
   });
 
-  // Show interrupted overlay (on top of vftScreen)
   document.getElementById('vftiStat').textContent =
     `${alertCount} off-centre events in ${(VFT_ALERT_WINDOW / 1000).toFixed(0)}s · ${vftTrialIndex} trials completed`;
   document.getElementById('vftInterrupted').classList.add('active');
 
-  // Re-trigger shake animation each time
   const icon = document.querySelector('.vfti-icon');
   icon.style.animation = 'none';
   void icon.offsetWidth;
@@ -1389,13 +1475,25 @@ function abortVFT(alertCount) {
 function retakeVFT() {
   document.getElementById('vftInterrupted').classList.remove('active');
   document.getElementById('vftScreen').classList.remove('active');
-  // Small delay so the screen clears before the countdown begins
-  setTimeout(() => startVFT(), 200);
+  document.getElementById('activeEyeBadge').classList.remove('show');
+  
+  setTimeout(() => {
+    baseline = null; baselineComplete = false; baselineSamples = []; baselineStartTime = null;
+    document.getElementById('baselinePrompt').classList.add('show');
+    document.getElementById('baselineMsg').textContent = `Re-calibrating ${activeEye || ''} eye — look at red dot`;
+    document.getElementById('baselineBtn').disabled = false;
+    document.getElementById('baselineBtn').textContent = 'Recalibrate & Restart';
+    document.getElementById('baselineBtn').style.borderColor = '';
+    document.getElementById('baselineBtn').style.color = '';
+    document.getElementById('baselineProgress').style.background = '';
+    setTimeout(() => startBaselineCreation(), 800);
+  }, 200);
 }
 
 function dismissVFTInterrupt() {
   document.getElementById('vftInterrupted').classList.remove('active');
   document.getElementById('vftScreen').classList.remove('active');
+  document.getElementById('activeEyeBadge').classList.remove('show');
   document.getElementById('baselinePrompt').classList.add('show');
   document.getElementById('vftStartBtn').classList.add('show');
   document.getElementById('vftStartBtn').textContent = 'Retake Field Test';
@@ -1406,38 +1504,59 @@ function endVFT() {
   setCompassVftMode(false);
   document.removeEventListener('keydown', onVFTKey);
 
-  // Final thresholds
   const finalThresholds = {};
   VFT_POSITIONS.forEach(p => {
     finalThresholds[p.id] = getThresholdEstimate(p.id);
   });
 
+  const completedEye = activeEye || 'both';
+  eyesDone[completedEye] = true;
+
   sendGazeData({
     type: 'vft_complete',
+    eye: completedEye,
     thresholds: finalThresholds,
     totalTrials: vftTrialIndex,
     trialLog: vftTrialLog,
+    cumulativeTrialLog: cumulativeTrialLog,
     ts: Date.now()
   });
 
-  // Show completion for 3s then return
   const W = vftCanvas.width, H = vftCanvas.height;
   vftCtx2.fillStyle = '#000';
   vftCtx2.fillRect(0, 0, W, H);
   vftCtx2.fillStyle = '#00f0b0';
   vftCtx2.font = 'bold 18px Space Mono, monospace';
   vftCtx2.textAlign = 'center';
-  vftCtx2.fillText('Field Test Complete', W/2, H/2 - 20);
+  vftCtx2.fillText(`${completedEye.charAt(0).toUpperCase() + completedEye.slice(1)} Eye — Field Test Complete`, W/2, H/2 - 20);
   vftCtx2.fillStyle = 'rgba(255,255,255,0.4)';
   vftCtx2.font = '12px Space Mono, monospace';
-  vftCtx2.fillText('Results sent to doctor', W/2, H/2 + 16);
 
-  setTimeout(() => {
-    document.getElementById('vftScreen').classList.remove('active');
-    document.getElementById('baselinePrompt').classList.add('show');
-    document.getElementById('vftStartBtn').classList.add('show');
-    document.getElementById('vftStartBtn').textContent = 'Repeat Field Test';
-  }, 3000);
+  const secondEye = completedEye === 'left' ? 'right' : 'left';
+  const bothDone = eyesDone.left && eyesDone.right;
+
+  if (bothDone) {
+    vftCtx2.fillText('Both eyes complete — results sent to doctor', W/2, H/2 + 16);
+    sendGazeData({
+      type: 'vft_both_complete',
+      cumulativeTrialLog: cumulativeTrialLog,
+      ts: Date.now()
+    });
+    setTimeout(() => {
+      document.getElementById('vftScreen').classList.remove('active');
+      document.getElementById('activeEyeBadge').classList.remove('show');
+      document.getElementById('baselinePrompt').classList.add('show');
+      document.getElementById('vftStartBtn').classList.add('show');
+      document.getElementById('vftStartBtn').textContent = 'Retake Full Test';
+    }, 3000);
+  } else {
+    vftCtx2.fillText('Results sent — switching to other eye…', W/2, H/2 + 16);
+    setTimeout(() => {
+      document.getElementById('vftScreen').classList.remove('active');
+      document.getElementById('activeEyeBadge').classList.remove('show');
+      showEyeSwitchPrompt(completedEye, secondEye);
+    }, 2000);
+  }
 }
 
 // ===== Helpers =====
@@ -1446,6 +1565,68 @@ function stepErr(n, msg) { document.getElementById('i'+n).className='ico err'; d
 function stepRun(n, msg) { document.getElementById('i'+n).className='ico spin'; document.getElementById('l'+n).className='slbl run'; document.getElementById('d'+n).textContent=msg; document.getElementById('p'+n).style.width='35%'; }
 function showErr(html) { const b=document.getElementById('errBox'); b.innerHTML=html; b.className='err-box show'; }
 function loadScript(src) { return new Promise((res,rej)=>{ if(document.querySelector(`script[src="${src}"]`)){res();return;} const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('Script load failed')); document.head.appendChild(s); }); }
+
+// ===== Eye Selection Flow =====
+
+function openEyeSelect() {
+  document.getElementById('vftStartBtn').classList.remove('show');
+  document.getElementById('baselinePrompt').classList.remove('show');
+  document.getElementById('eyeSelectOverlay').classList.add('active');
+}
+
+function selectEye(eye) {
+  activeEye = eye;
+  document.getElementById('eyeSelectOverlay').classList.remove('active');
+  document.getElementById('fixationScreen').classList.add('active');
+
+  const badge = document.getElementById('activeEyeBadge');
+  badge.textContent = eye === 'left' ? '👁 LEFT EYE' : 'RIGHT EYE 👁';
+  badge.className = 'show' + (eye === 'right' ? ' right' : '');
+
+  sendGazeData({ type: 'eye_selected', eye, ts: Date.now() });
+
+  vftTrialLog = [];
+  baseline = null;
+  baselineComplete = false;
+  baselineSamples = [];
+  baselineStartTime = null;
+
+  if (eyeBaselines[eye]) {
+    baseline = eyeBaselines[eye];
+    baselineComplete = true;
+    document.getElementById('baselineMsg').textContent = `${eye.charAt(0).toUpperCase() + eye.slice(1)} eye baseline ready — starting test…`;
+    document.getElementById('baselinePrompt').classList.add('show');
+    sendGazeData({ type: 'baseline_reused', eye, ts: Date.now() });
+    setTimeout(() => startVFT(), 1000);
+  } else {
+    // Tell the patient to cover the OPOSSITE eye.
+    document.getElementById('baselineMsg').textContent = `Cover your ${eye === 'left' ? 'right' : 'left'} eye — look at red dot for 4s`;
+    document.getElementById('baselineBtn').disabled = false;
+    document.getElementById('baselineBtn').textContent = 'Create Baseline';
+    document.getElementById('baselineBtn').style.borderColor = '';
+    document.getElementById('baselineBtn').style.color = '';
+    document.getElementById('baselineProgress').style.background = '';
+    document.getElementById('baselineProgress').style.width = '0%';
+    document.getElementById('baselinePrompt').classList.add('show');
+    sendGazeData({ type: 'baseline_start', ts: Date.now(), eye });
+    setTimeout(() => startBaselineCreation(), 1000);
+  }
+}
+
+function showEyeSwitchPrompt(doneEye, nextEye) {
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  document.getElementById('firstEyeLabel').textContent = cap(doneEye);
+  document.getElementById('firstEyeLabel2').textContent = cap(doneEye);
+  document.getElementById('secondEyeLabel').textContent = cap(nextEye);
+  document.getElementById('secondEyeBtnLabel').textContent = cap(nextEye);
+  document.getElementById('eyeSwitchOverlay').classList.add('active');
+}
+
+function beginSecondEye() {
+  document.getElementById('eyeSwitchOverlay').classList.remove('active');
+  const nextEye = activeEye === 'left' ? 'right' : 'left';
+  selectEye(nextEye);
+}
 
 async function boot() {
   const btn = document.getElementById('startBtn');
@@ -1484,20 +1665,14 @@ async function boot() {
     stepOk(3, 'Model ready');
   } catch(e) { stepErr(3, e.message); btn.disabled=false; return; }
 
-  // Switch to fixation screen
+  // Flow straight to the eye selection overlay to start properly 
   document.getElementById('initOverlay').style.display = 'none';
-  document.getElementById('fixationScreen').classList.add('active');
-  document.getElementById('baselinePrompt').classList.add('show');
-  // Hide the manual button — baseline starts automatically after a short settle delay
-  document.getElementById('baselineBtn').style.display = 'none';
+  document.getElementById('eyeSelectOverlay').classList.add('active');
+  
   running = true;
   sendGazeData({ type: 'session_start', ts: Date.now() });
   sendScreenMetrics();
-  startCameraStream();
   requestAnimationFrame(loop);
-  // Auto-begin baseline after 1.5s so the face mesh settles on the first frame
-  document.getElementById('baselineMsg').textContent = 'Look at the red dot — baseline starting…';
-  setTimeout(() => startBaselineCreation(), 1500);
 }
 
 window.addEventListener('resize', () => {
