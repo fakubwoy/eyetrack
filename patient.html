@@ -249,6 +249,98 @@
   #vftStartBtn:hover { background: rgba(180,143,255,0.22); }
   #vftStartBtn.show { display: block; }
 
+  /* ===== VFT Countdown overlay ===== */
+  #vftCountdown {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.92);
+    z-index: 150;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+  }
+  #vftCountdown.active { display: flex; }
+  .countdown-number {
+    font-family: var(--sans);
+    font-size: 96px;
+    font-weight: 800;
+    color: var(--accent);
+    text-shadow: 0 0 40px rgba(0,240,176,0.6);
+    line-height: 1;
+    animation: countPulse 0.9s ease-out;
+  }
+  @keyframes countPulse {
+    0%  { transform: scale(1.4); opacity: 0.3; }
+    50% { transform: scale(1.05); opacity: 1; }
+    100%{ transform: scale(1); opacity: 1; }
+  }
+  .countdown-label {
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+  }
+  .countdown-warn {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--warn);
+    text-align: center;
+    max-width: 300px;
+    line-height: 2;
+  }
+
+  /* ===== Off-center during test warning ===== */
+  #vftOffWarning {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 200;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+    pointer-events: none;
+  }
+  #vftOffWarning.active { display: flex; pointer-events: all; }
+  .off-warn-title {
+    font-family: var(--sans);
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--danger);
+    letter-spacing: 1px;
+    text-shadow: 0 0 20px rgba(255,58,92,0.7);
+  }
+  .off-warn-sub {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.4);
+    max-width: 280px;
+    line-height: 2;
+  }
+  .off-warn-bar-wrap {
+    width: 220px; height: 3px;
+    background: rgba(255,58,92,0.15);
+    border-radius: 2px; overflow: hidden;
+  }
+  #offWarnCountdown { height: 100%; background: var(--danger); width: 100%; transition: width 0.1s linear; }
+
+  /* Off-centre border flash during test */
+  #vftOffBorder {
+    position: fixed;
+    inset: 0;
+    border: 3px solid transparent;
+    pointer-events: none;
+    z-index: 120;
+    transition: border-color 0.15s;
+  }
+  #vftOffBorder.alert { border-color: rgba(255,58,92,0.7); box-shadow: inset 0 0 40px rgba(255,58,92,0.18); }
+
   /* Space press flash */
   #spaceFlash {
     position: fixed;
@@ -311,10 +403,26 @@
   <button class="baseline-action-btn" id="baselineBtn" onclick="startBaselineCreation()">Create Baseline</button>
 </div>
 
+<!-- VFT Countdown overlay (shown before test begins) -->
+<div id="vftCountdown">
+  <div class="countdown-number" id="countdownNumber">3</div>
+  <div class="countdown-label">Test begins in...</div>
+  <div class="countdown-warn">⚠ Keep your eyes on the red dot throughout the test<br>Drifting off-center will pause and reset the current trial</div>
+</div>
+
 <!-- Visual Field Test Screen -->
 <div id="vftScreen">
   <canvas id="vftCanvas"></canvas>
   <div id="spaceFlash"></div>
+  <div id="vftOffBorder"></div>
+
+  <!-- Off-center pause overlay (inside the VFT screen) -->
+  <div id="vftOffWarning">
+    <div class="off-warn-title">⚠ Return to Center</div>
+    <div class="off-warn-sub">Your gaze has drifted off-center.<br>Look at the red dot — trial will reset.</div>
+    <div class="off-warn-bar-wrap"><div id="offWarnCountdown"></div></div>
+  </div>
+
   <div id="vftUI">
     <div class="vft-instruction">Focus on the red dot · Press SPACE if you see a flash</div>
     <div class="vft-progress"><div id="vftProgressFill"></div></div>
@@ -519,7 +627,7 @@ function collectBaseline(iL, iR, yaw, pitch, fw, iLv, iRv) {
     };
     baselineComplete = true;
     document.getElementById('baselineProgress').style.width = '100%';
-    document.getElementById('baselineMsg').textContent = 'Baseline set — tracking active';
+    document.getElementById('baselineMsg').textContent = 'Baseline set — test starting…';
     document.getElementById('baselineBtn').disabled = true;
     document.getElementById('baselineBtn').textContent = 'Baseline Set ✓';
     document.getElementById('baselineBtn').style.borderColor = 'var(--accent)';
@@ -527,8 +635,8 @@ function collectBaseline(iL, iR, yaw, pitch, fw, iLv, iRv) {
     document.getElementById('baselineProgress').style.background = 'var(--accent)';
     if (!sessionStart) { sessionStart = Date.now(); setInterval(updateStats, 1000); }
     sendGazeData({ type: 'baseline_created', ts: Date.now() });
-    // Show VFT button
-    document.getElementById('vftStartBtn').classList.add('show');
+    // Auto-launch VFT with countdown after a brief moment
+    setTimeout(() => startVFT(), 800);
   }
 }
 
@@ -641,6 +749,9 @@ async function loop() {
           if (lastState === 'c' && lastTick) centerMs += now - lastTick;
         }
         state = lastState;
+
+        // Enforce gaze during VFT
+        if (vftRunning) checkVFTGaze();
 
         const tot = sessionStart ? Date.now() - sessionStart : 0;
         sendGazeData({
@@ -762,12 +873,105 @@ function buildVFTTrialSequence() {
   return trials;
 }
 
+// ===== VFT Off-center enforcement =====
+let vftOffCenterActive = false;
+let vftOffCenterStart = null;
+const VFT_OFFCENTER_TOLERANCE_DEG = 8; // degrees — tighter than normal alertThresholdDeg
+const VFT_OFFCENTER_ABORT_MS = 1200;   // 1.2s off-center aborts the current trial
+let offWarnAnimId = null;
+
+function checkVFTGaze() {
+  if (!vftRunning || !baselineComplete) return;
+  const isOff = currentDeviation > VFT_OFFCENTER_TOLERANCE_DEG;
+  const border = document.getElementById('vftOffBorder');
+  if (isOff) {
+    border.classList.add('alert');
+    if (!vftOffCenterStart) vftOffCenterStart = Date.now();
+    const elapsed = Date.now() - vftOffCenterStart;
+    const pct = Math.max(0, 100 - (elapsed / VFT_OFFCENTER_ABORT_MS) * 100);
+    document.getElementById('offWarnCountdown').style.width = pct + '%';
+
+    if (elapsed > 200 && !vftOffCenterActive) {
+      // Show warning overlay
+      document.getElementById('vftOffWarning').classList.add('active');
+      vftOffCenterActive = true;
+    }
+    if (elapsed >= VFT_OFFCENTER_ABORT_MS && vftOffCenterActive) {
+      abortCurrentVFTTrial();
+    }
+  } else {
+    border.classList.remove('alert');
+    vftOffCenterStart = null;
+    document.getElementById('offWarnCountdown').style.width = '100%';
+    if (vftOffCenterActive) {
+      document.getElementById('vftOffWarning').classList.remove('active');
+      vftOffCenterActive = false;
+    }
+  }
+}
+
+function abortCurrentVFTTrial() {
+  if (!vftRunning) return;
+  // Clear timers for current trial
+  clearTimeout(vftStimTimer);
+  clearTimeout(vftIsiTimer);
+  vftStimVisible = false;
+  vftOffCenterActive = false;
+  vftOffCenterStart = null;
+  document.getElementById('vftOffWarning').classList.remove('active');
+  document.getElementById('offWarnCountdown').style.width = '100%';
+
+  sendGazeData({ type: 'vft_trial_aborted', trialIndex: vftTrialIndex, ts: Date.now() });
+
+  // Mark trial as aborted (not counted), re-draw fixation, then wait for gaze to return
+  drawVFTScene(null, 0);
+  // Poll until gaze is back on center, then resume
+  const waitForReturn = setInterval(() => {
+    if (currentDeviation <= VFT_OFFCENTER_TOLERANCE_DEG) {
+      clearInterval(waitForReturn);
+      // Brief pause then continue (don't advance trial index — retry this trial)
+      if (vftCurrentTrial) {
+        vftCurrentTrial.responded = false;
+        vftCurrentTrial.stimStart = null;
+      }
+      setTimeout(scheduleNextVFTTrial, 600);
+    }
+  }, 100);
+}
+
 function startVFT() {
   if (vftRunning) return;
-  vftRunning = true;
   document.getElementById('vftStartBtn').classList.remove('show');
-  document.getElementById('vftScreen').classList.add('active');
   document.getElementById('baselinePrompt').classList.remove('show');
+
+  // Launch countdown (3-2-1) then begin
+  const countEl = document.getElementById('countdownNumber');
+  const overlay = document.getElementById('vftCountdown');
+  overlay.classList.add('active');
+  let n = 3;
+  countEl.textContent = n;
+
+  const tick = () => {
+    // Re-trigger pulse animation
+    countEl.style.animation = 'none';
+    void countEl.offsetWidth; // reflow
+    countEl.style.animation = 'countPulse 0.9s ease-out';
+
+    n--;
+    if (n <= 0) {
+      overlay.classList.remove('active');
+      launchVFT();
+    } else {
+      countEl.textContent = n;
+      setTimeout(tick, 1000);
+    }
+  };
+  setTimeout(tick, 1000);
+}
+
+function launchVFT() {
+  vftRunning = true;
+  document.getElementById('vftScreen').classList.add('active');
 
   vftCanvas = document.getElementById('vftCanvas');
   vftCtx2 = vftCanvas.getContext('2d');
@@ -779,12 +983,8 @@ function startVFT() {
 
   sendGazeData({ type: 'vft_start', ts: Date.now(), totalTrials: VFT_TOTAL_TRIALS });
 
-  // Draw fixation cross
   drawVFTScene(null, 0);
-
-  // Spacebar listener
   document.addEventListener('keydown', onVFTKey);
-
   scheduleNextVFTTrial();
 }
 
@@ -915,6 +1115,10 @@ function sendVFTTrialResult(trial, hit) {
 
 function endVFT() {
   vftRunning = false;
+  vftOffCenterActive = false;
+  vftOffCenterStart = null;
+  document.getElementById('vftOffWarning').classList.remove('active');
+  document.getElementById('vftOffBorder').classList.remove('alert');
   document.removeEventListener('keydown', onVFTKey);
 
   // Final thresholds
@@ -947,6 +1151,7 @@ function endVFT() {
     document.getElementById('baselinePrompt').classList.add('show');
     document.getElementById('vftStartBtn').classList.add('show');
     document.getElementById('vftStartBtn').textContent = 'Repeat Field Test';
+    document.getElementById('vftStartBtn').onclick = startVFT;
   }, 3000);
 }
 
