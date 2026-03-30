@@ -1077,6 +1077,7 @@ let vftRunning = false;
 let vftCurrentTrial = null;
 let vftTrialIndex = 0;      // total trials run so far (for display)
 let vftStimTimer = null;
+let vftGraceTimer = null;
 let vftIsiTimer = null;
 let vftCanvas, vftCtx2;
 let vftStimVisible = false;
@@ -1216,9 +1217,10 @@ function runVFTTrial() {
     vftStimVisible = false;
     drawVFTScene(null, 0);
     // Give 300ms grace window after stim
-    setTimeout(() => {
+    vftGraceTimer = setTimeout(() => {
       if (!trial.responded) {
-        // Miss
+        // Miss — mark responded so ISI keypresses can't re-trigger this trial
+        trial.responded = true;
         recordVFTResponse(trial.posId, lum, false);
         sendVFTTrialResult(trial, false);
         scheduleNextVFTTrial();
@@ -1243,6 +1245,7 @@ function onVFTKey(e) {
     recordVFTResponse(vftCurrentTrial.posId, vftCurrentTrial.luminance, true);
     sendVFTTrialResult(vftCurrentTrial, true);
     clearTimeout(vftStimTimer);
+    clearTimeout(vftGraceTimer);
     vftStimVisible = false;
     drawVFTScene(null, 0);
     scheduleNextVFTTrial();
@@ -1275,6 +1278,7 @@ function abortVFT(alertCount) {
 
   // Cancel any pending trial timers
   clearTimeout(vftStimTimer);
+  clearTimeout(vftGraceTimer);
   clearTimeout(vftIsiTimer);
 
   sendGazeData({
