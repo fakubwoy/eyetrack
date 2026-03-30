@@ -767,9 +767,11 @@ function handleMessage(d) {
   if (d.type === 'vft_stim') {
     currentVFTStim = { posId: d.posId, luminance: d.luminance };
     vftTrialCount = d.trialIndex + 1;
-    document.getElementById('vftStatusSub').textContent = `${vftTrialCount}/${vftTotalTrials}`;
-    document.getElementById('vftProgressFill2').style.width = (vftTrialCount / vftTotalTrials * 100) + '%';
-    document.getElementById('vftTrialCount').textContent = `${vftTrialCount} / ${vftTotalTrials} trials`;
+    const estTotal = vftTotalTrials || '~28';
+    document.getElementById('vftStatusSub').textContent = `${vftTrialCount} trials`;
+    const pct = vftTotalTrials ? Math.min(99, vftTrialCount / vftTotalTrials * 100) : 0;
+    document.getElementById('vftProgressFill2').style.width = pct + '%';
+    document.getElementById('vftTrialCount').textContent = `${vftTrialCount} trials (adaptive)`;
     // Highlight active corner
     ['TL','TR','BL','BR'].forEach(id => {
       const el = document.getElementById('vftCorner'+id);
@@ -804,9 +806,15 @@ function handleMessage(d) {
     document.getElementById('vftDot').className = 'vft-status-dot done';
     document.getElementById('vftStatusLabel').textContent = 'Test complete';
     document.getElementById('vftProgressFill2').style.width = '100%';
-    document.getElementById('vftTrialCount').textContent = `${vftTotalTrials} / ${vftTotalTrials} trials`;
-    if (d.thresholds) updateVFTThresholds(d.thresholds);
-    addAlert(`VFT complete — thresholds: TL=${d.thresholds.TL} TR=${d.thresholds.TR} BL=${d.thresholds.BL} BR=${d.thresholds.BR}`, 'p');
+    const total = d.totalTrials || vftTrialCount;
+    document.getElementById('vftStatusSub').textContent = `${total}/${total}`;
+    document.getElementById('vftTrialCount').textContent = `${total} / ${total} trials`;
+    if (d.thresholds) {
+      updateVFTThresholds(d.thresholds);
+      const th = d.thresholds;
+      const fmt = id => (th[id] !== null && th[id] !== undefined) ? th[id] : '?';
+      addAlert(`VFT complete — TL=${fmt('TL')} TR=${fmt('TR')} BL=${fmt('BL')} BR=${fmt('BR')}`, 'p');
+    }
   }
 }
 

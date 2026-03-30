@@ -52,14 +52,20 @@
   .ch-v { left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.04); transform: translateX(-50%); }
 
   /* Fixation target */
+  /* Fixation target — pinned to true screen center via position:fixed so it
+     never shifts when flex siblings are added/removed (e.g. baseline → VFT transition) */
   .fixation-wrap {
-    position: relative;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     width: 140px;
     height: 140px;
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 2;
+    pointer-events: none;
   }
 
   .fixation-ring-outer {
@@ -77,15 +83,15 @@
   }
   .fixation-dot {
     position: absolute;
-    width: 16px; height: 16px;
+    width: 8px; height: 8px;
     background: #ff3a5c;
     border-radius: 50%;
-    box-shadow: 0 0 0 4px rgba(255,58,92,0.35), 0 0 18px rgba(255,58,92,0.3);
+    box-shadow: 0 0 0 2px rgba(255,58,92,0.35), 0 0 9px rgba(255,58,92,0.3);
     z-index: 3;
     transition: box-shadow 0.2s;
   }
   .fixation-dot.pulse {
-    box-shadow: 0 0 0 8px rgba(255,58,92,0.6), 0 0 28px rgba(255,58,92,0.5);
+    box-shadow: 0 0 0 4px rgba(255,58,92,0.6), 0 0 14px rgba(255,58,92,0.5);
   }
   @keyframes breathe { 0%,100%{transform:scale(1);opacity:0.5} 50%{transform:scale(1.05);opacity:0.8} }
 
@@ -277,6 +283,90 @@
   #vftStartBtn:hover { background: rgba(180,143,255,0.22); }
   #vftStartBtn.show { display: block; }
 
+  /* ===== VFT interrupted overlay ===== */
+  #vftInterrupted {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.92);
+    z-index: 200;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    text-align: center;
+    padding: 32px;
+  }
+  #vftInterrupted.active { display: flex; }
+  .vfti-icon {
+    font-size: 48px;
+    line-height: 1;
+    animation: vftiShake 0.5s ease-out;
+  }
+  @keyframes vftiShake {
+    0%,100% { transform: translateX(0); }
+    20%      { transform: translateX(-8px); }
+    40%      { transform: translateX(8px); }
+    60%      { transform: translateX(-5px); }
+    80%      { transform: translateX(5px); }
+  }
+  .vfti-title {
+    font-family: var(--sans);
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--danger);
+    letter-spacing: 1px;
+  }
+  .vfti-reason {
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.4);
+    max-width: 340px;
+    line-height: 2;
+  }
+  .vfti-stat {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--warn);
+  }
+  .vfti-hint {
+    font-size: 10px;
+    color: rgba(255,255,255,0.25);
+    letter-spacing: 1px;
+    max-width: 300px;
+    line-height: 2;
+    text-transform: uppercase;
+  }
+  .vfti-btn {
+    margin-top: 8px;
+    background: rgba(255,58,92,0.12);
+    border: 1px solid rgba(255,58,92,0.5);
+    color: var(--danger);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 14px 32px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .vfti-btn:hover { background: rgba(255,58,92,0.24); }
+  .vfti-dismiss {
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.2);
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-family: var(--mono);
+    padding: 4px 8px;
+  }
+  .vfti-dismiss:hover { color: rgba(255,255,255,0.45); }
+
   /* Space press flash */
   #spaceFlash {
     position: fixed;
@@ -365,6 +455,17 @@
   <div class="cd-number" id="cdNumber">3</div>
   <div class="cd-label">Test begins in…</div>
   <div class="cd-hint">⚠ Keep your eyes on the red dot<br>throughout the entire test</div>
+</div>
+
+<!-- VFT interrupted -->
+<div id="vftInterrupted">
+  <div class="vfti-icon">👁️</div>
+  <div class="vfti-title">Test Interrupted</div>
+  <div class="vfti-reason">Too many off-center gaze events detected.<br>Reliable results cannot be recorded.</div>
+  <div class="vfti-stat" id="vftiStat"></div>
+  <div class="vfti-hint">Keep your eyes fixed on the red dot<br>for the full duration of the test.</div>
+  <button class="vfti-btn" onclick="retakeVFT()">↺ &nbsp;Retake Test</button>
+  <button class="vfti-dismiss" onclick="dismissVFTInterrupt()">dismiss &amp; return to main screen</button>
 </div>
 
 <!-- Fixation screen -->
@@ -813,11 +914,21 @@ async function loop() {
             lastState = 'o'; alerts++;
             document.getElementById('fixationDot').classList.add('pulse');
             setTimeout(() => document.getElementById('fixationDot').classList.remove('pulse'), 300);
+            // ── VFT rolling-window off-centre check ──────────────────────
+            if (vftRunning && vftLastAlertState !== 'o') {
+              vftLastAlertState = 'o';
+              vftAlertTimes.push(now);
+              // Prune timestamps older than the window
+              vftAlertTimes = vftAlertTimes.filter(t => now - t <= VFT_ALERT_WINDOW);
+              if (vftAlertTimes.length >= VFT_ALERT_LIMIT) {
+                abortVFT(vftAlertTimes.length);
+              }
+            }
           }
           if (lastState === 'o' && lastTick) offMs += now - lastTick;
         } else {
           awayStart = null;
-          if (lastState !== 'c') lastState = 'c';
+          if (lastState !== 'c') { lastState = 'c'; vftLastAlertState = 'c'; }
           if (lastState === 'c' && lastTick) centerMs += now - lastTick;
         }
         state = lastState;
@@ -868,11 +979,15 @@ async function loop() {
   requestAnimationFrame(loop);
 }
 
-// ===== VISUAL FIELD TEST =====
-const VFT_TOTAL_TRIALS = 40;
+// ===== VISUAL FIELD TEST — Adaptive Staircase =====
+// Uses a 4-2-1 staircase (like Humphrey) per position:
+// Start at 127 (midpoint). Step down by 16 on hit, up by 16 on miss.
+// After first reversal, halve step size. After second reversal, halve again.
+// Converges in ~6-8 trials per position vs 10 fixed.
+// Positions are interleaved round-robin so all 4 progress simultaneously.
+
 const VFT_STIM_DURATION = 200; // ms
-const VFT_ISI = [800, 1400]; // inter-stimulus interval range
-// 4 corner positions (relative to center as fraction of viewport)
+const VFT_ISI = [800, 1400];   // inter-stimulus interval range ms
 const VFT_POSITIONS = [
   { id: 'TL', label: 'Top-Left',     dx: -0.28, dy: -0.28 },
   { id: 'TR', label: 'Top-Right',    dx:  0.28, dy: -0.28 },
@@ -880,67 +995,97 @@ const VFT_POSITIONS = [
   { id: 'BR', label: 'Bottom-Right', dx:  0.28, dy:  0.28 },
 ];
 
-let vftRunning = false;
-let vftTrials = []; // { posId, luminance, responded, rt }
-let vftCurrentTrial = null;
-let vftTrialIndex = 0;
-let vftStimTimer = null;
-let vftIsiTimer = null;
-let vftCanvas, vftCtx2;
-let vftStimVisible = false;
-
-// Per-position threshold state (QUEST-lite: binary search)
-let vftState = {}; // posId -> { lo, hi, responses: [{lum, hit}] }
+// Per-position staircase state
+let vftState = {};
 
 function initVFTState() {
   VFT_POSITIONS.forEach(p => {
-    vftState[p.id] = { lo: 0, hi: 255, responses: [] };
+    vftState[p.id] = {
+      lo: 0, hi: 255,
+      step: 64,          // initial step size
+      lastDir: null,     // 'up' | 'down' — direction of last step
+      reversals: 0,      // number of direction reversals so far
+      responses: [],     // { luminance, hit }
+      done: false        // converged?
+    };
   });
+}
+
+function isVFTDone() {
+  return VFT_POSITIONS.every(p => vftState[p.id].done);
+}
+
+// Estimated total trials for progress display
+function vftEstimatedTotal() {
+  // roughly 7 trials per position on average
+  return VFT_POSITIONS.length * 7;
 }
 
 function getNextLuminance(posId) {
   const s = vftState[posId];
-  // Binary midpoint
   return Math.round((s.lo + s.hi) / 2);
 }
 
 function recordVFTResponse(posId, luminance, hit) {
   const s = vftState[posId];
   s.responses.push({ luminance, hit });
+
+  // Binary-search bracket update (same as before, robust)
   if (hit) {
-    s.hi = luminance; // threshold is at or below this
+    s.hi = luminance;
   } else {
-    s.lo = luminance; // threshold is above this
+    s.lo = luminance;
   }
+
+  // Convergence: bracket width ≤ 4 OR we've had 3+ reversals
+  const bracketWidth = s.hi - s.lo;
+  if (bracketWidth <= 4 || s.reversals >= 3) {
+    s.done = true;
+  }
+
+  // Track reversals for step-size halving
+  const dir = hit ? 'down' : 'up';
+  if (s.lastDir !== null && dir !== s.lastDir) {
+    s.reversals++;
+    s.step = Math.max(4, Math.floor(s.step / 2));
+  }
+  s.lastDir = dir;
 }
 
 function getThresholdEstimate(posId) {
   const s = vftState[posId];
   if (s.responses.length === 0) return null;
-  // Weighted midpoint of last few reversals
-  const hits = s.responses.filter(r => r.hit).map(r => r.luminance);
+  const hits   = s.responses.filter(r =>  r.hit).map(r => r.luminance);
   const misses = s.responses.filter(r => !r.hit).map(r => r.luminance);
-  if (hits.length === 0) return 255;
+  if (hits.length   === 0) return 255;
   if (misses.length === 0) return 0;
-  const minHit = Math.min(...hits);
+  const minHit  = Math.min(...hits);
   const maxMiss = Math.max(...misses);
   return Math.round((minHit + maxMiss) / 2);
 }
 
-function buildVFTTrialSequence() {
-  const trials = [];
-  // Interleave positions, ~10 per position
-  for (let i = 0; i < VFT_TOTAL_TRIALS; i++) {
-    const pos = VFT_POSITIONS[i % VFT_POSITIONS.length];
-    trials.push({ posId: pos.id, luminance: null, responded: false, rt: null, stimStart: null });
-  }
-  // Shuffle
-  for (let i = trials.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [trials[i], trials[j]] = [trials[j], trials[i]];
-  }
-  return trials;
+// Build interleaved trial queue — only for positions not yet done
+function getNextPosId() {
+  const active = VFT_POSITIONS.filter(p => !vftState[p.id].done);
+  if (active.length === 0) return null;
+  // Round-robin: pick the position with the fewest trials so far
+  active.sort((a, b) => vftState[a.id].responses.length - vftState[b.id].responses.length);
+  return active[0].id;
 }
+
+let vftRunning = false;
+let vftCurrentTrial = null;
+let vftTrialIndex = 0;      // total trials run so far (for display)
+let vftStimTimer = null;
+let vftIsiTimer = null;
+let vftCanvas, vftCtx2;
+let vftStimVisible = false;
+
+// Off-center abort tracking (rolling window)
+const VFT_ALERT_LIMIT  = 5;
+const VFT_ALERT_WINDOW = 10000;
+let vftAlertTimes      = [];
+let vftLastAlertState  = null;
 
 function startVFT() {
   if (vftRunning) return;
@@ -981,10 +1126,13 @@ function launchVFT() {
   resizeVFTCanvas();
 
   initVFTState();
-  vftTrials = buildVFTTrialSequence();
   vftTrialIndex = 0;
+  vftAlertTimes = [];
+  vftLastAlertState = null;
+  vftCurrentTrial = null;
 
-  sendGazeData({ type: 'vft_start', ts: Date.now(), totalTrials: VFT_TOTAL_TRIALS });
+  const estTotal = vftEstimatedTotal();
+  sendGazeData({ type: 'vft_start', ts: Date.now(), totalTrials: estTotal });
 
   drawVFTScene(null, 0);
   document.addEventListener('keydown', onVFTKey);
@@ -1001,14 +1149,14 @@ function drawVFTScene(stimPos, luminance) {
   vftCtx2.fillStyle = '#000';
   vftCtx2.fillRect(0, 0, W, H);
 
-  // Center fixation dot
+  // Center fixation dot — half size
   const cx = W / 2, cy = H / 2;
   vftCtx2.beginPath();
-  vftCtx2.arc(cx, cy, 8, 0, Math.PI * 2);
+  vftCtx2.arc(cx, cy, 4, 0, Math.PI * 2);
   vftCtx2.fillStyle = '#ff3a5c';
   vftCtx2.fill();
   vftCtx2.beginPath();
-  vftCtx2.arc(cx, cy, 16, 0, Math.PI * 2);
+  vftCtx2.arc(cx, cy, 8, 0, Math.PI * 2);
   vftCtx2.strokeStyle = 'rgba(255,58,92,0.3)';
   vftCtx2.lineWidth = 1.5;
   vftCtx2.stroke();
@@ -1029,7 +1177,7 @@ function drawVFTScene(stimPos, luminance) {
 }
 
 function scheduleNextVFTTrial() {
-  if (vftTrialIndex >= vftTrials.length) {
+  if (isVFTDone()) {
     endVFT();
     return;
   }
@@ -1038,28 +1186,33 @@ function scheduleNextVFTTrial() {
 }
 
 function runVFTTrial() {
-  const trial = vftTrials[vftTrialIndex];
-  const lum = getNextLuminance(trial.posId);
-  trial.luminance = lum;
-  trial.stimStart = Date.now();
-  vftStimVisible = true;
+  const posId = getNextPosId();
+  if (!posId) { endVFT(); return; }
+
+  const lum = getNextLuminance(posId);
+  const trial = { posId, luminance: lum, responded: false, rt: null, stimStart: Date.now() };
   vftCurrentTrial = trial;
+  vftStimVisible = true;
 
-  drawVFTScene(trial.posId, lum);
+  drawVFTScene(posId, lum);
 
-  // Update progress
-  document.getElementById('vftProgressFill').style.width = ((vftTrialIndex / VFT_TOTAL_TRIALS) * 100) + '%';
+  // Progress: count total responses vs estimated total
+  const totalResponses = VFT_POSITIONS.reduce((acc, p) => acc + vftState[p.id].responses.length, 0);
+  const estTotal = vftEstimatedTotal();
+  const pct = Math.min(99, (totalResponses / estTotal) * 100);
+  document.getElementById('vftProgressFill').style.width = pct + '%';
+
+  vftTrialIndex = totalResponses + 1;
 
   sendGazeData({
     type: 'vft_stim',
-    trialIndex: vftTrialIndex,
-    posId: trial.posId,
+    trialIndex: totalResponses,
+    posId,
     luminance: lum,
     ts: Date.now()
   });
 
   vftStimTimer = setTimeout(() => {
-    // Stimulus ends — no response recorded yet
     vftStimVisible = false;
     drawVFTScene(null, 0);
     // Give 300ms grace window after stim
@@ -1068,7 +1221,6 @@ function runVFTTrial() {
         // Miss
         recordVFTResponse(trial.posId, lum, false);
         sendVFTTrialResult(trial, false);
-        vftTrialIndex++;
         scheduleNextVFTTrial();
       }
     }, 300);
@@ -1093,7 +1245,6 @@ function onVFTKey(e) {
     clearTimeout(vftStimTimer);
     vftStimVisible = false;
     drawVFTScene(null, 0);
-    vftTrialIndex++;
     scheduleNextVFTTrial();
   }
 }
@@ -1116,6 +1267,51 @@ function sendVFTTrialResult(trial, hit) {
   });
 }
 
+function abortVFT(alertCount) {
+  if (!vftRunning) return;
+  vftRunning = false;
+  setCompassVftMode(false);
+  document.removeEventListener('keydown', onVFTKey);
+
+  // Cancel any pending trial timers
+  clearTimeout(vftStimTimer);
+  clearTimeout(vftIsiTimer);
+
+  sendGazeData({
+    type: 'vft_aborted',
+    reason: 'too_many_off_center',
+    alertCount,
+    trialsCompleted: vftTrialIndex,
+    ts: Date.now()
+  });
+
+  // Show interrupted overlay (on top of vftScreen)
+  document.getElementById('vftiStat').textContent =
+    `${alertCount} off-centre events in ${(VFT_ALERT_WINDOW / 1000).toFixed(0)}s · ${vftTrialIndex} trials completed`;
+  document.getElementById('vftInterrupted').classList.add('active');
+
+  // Re-trigger shake animation each time
+  const icon = document.querySelector('.vfti-icon');
+  icon.style.animation = 'none';
+  void icon.offsetWidth;
+  icon.style.animation = 'vftiShake 0.5s ease-out';
+}
+
+function retakeVFT() {
+  document.getElementById('vftInterrupted').classList.remove('active');
+  document.getElementById('vftScreen').classList.remove('active');
+  // Small delay so the screen clears before the countdown begins
+  setTimeout(() => startVFT(), 200);
+}
+
+function dismissVFTInterrupt() {
+  document.getElementById('vftInterrupted').classList.remove('active');
+  document.getElementById('vftScreen').classList.remove('active');
+  document.getElementById('baselinePrompt').classList.add('show');
+  document.getElementById('vftStartBtn').classList.add('show');
+  document.getElementById('vftStartBtn').textContent = 'Retake Field Test';
+}
+
 function endVFT() {
   vftRunning = false;
   setCompassVftMode(false);
@@ -1130,7 +1326,7 @@ function endVFT() {
   sendGazeData({
     type: 'vft_complete',
     thresholds: finalThresholds,
-    trials: vftTrials,
+    totalTrials: vftTrialIndex,
     ts: Date.now()
   });
 
