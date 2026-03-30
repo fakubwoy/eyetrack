@@ -1099,7 +1099,7 @@ let vftCanvas, vftCtx2;
 let vftStimVisible = false;
 
 // Off-center abort tracking (rolling window)
-const VFT_ALERT_LIMIT  = 10;
+const VFT_ALERT_LIMIT  = 5;
 const VFT_ALERT_WINDOW = 10000;
 let vftAlertTimes      = [];
 let vftLastAlertState  = null;
@@ -1152,7 +1152,18 @@ function launchVFT() {
   sendGazeData({ type: 'vft_start', ts: Date.now(), totalTrials: estTotal });
 
   drawVFTScene(null, 0);
+
+  // Reset stim visibility — if a previous run ended mid-stim this flag could be
+  // left true, letting the first spacebar of the new run register as a hit before
+  // any dot has appeared (always locks TL since it runs first).
+  vftStimVisible = false;
+
+  // Remove-then-add prevents duplicate listeners stacking across retests.
+  // Each duplicate would call recordVFTResponse twice per keypress, corrupting
+  // the bracket for whichever position is active.
+  document.removeEventListener('keydown', onVFTKey);
   document.addEventListener('keydown', onVFTKey);
+
   scheduleNextVFTTrial();
 }
 
