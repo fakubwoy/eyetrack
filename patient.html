@@ -94,45 +94,7 @@
   }
   @keyframes breathe { 0%,100%{transform:scale(1);opacity:0.5} 50%{transform:scale(1.05);opacity:0.8} }
 
-  /* Gaze Direction Arrow */
-  #gazeCompass {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    width: 200px;
-    height: 200px;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-    z-index: 10;
-  }
 
-  .g-arrow {
-    position: absolute;
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 26px;
-    line-height: 1;
-    color: var(--accent);
-    opacity: 0;
-    transition: opacity 0.25s ease, text-shadow 0.25s ease, transform 0.25s ease;
-    pointer-events: none;
-  }
-  .g-arrow.lit {
-    opacity: 0.9;
-    text-shadow: 0 0 16px rgba(0,240,176,0.8);
-    transform: scale(1.15);
-  }
-  .g-arrow[data-dir="up"]         { top: 0px;   left: 82px;  }
-  .g-arrow[data-dir="down"]       { bottom: 0px; left: 82px;  }
-  .g-arrow[data-dir="left"]       { top: 82px;  left: 0px;   }
-  .g-arrow[data-dir="right"]      { top: 82px;  right: 0px;  }
-  .g-arrow[data-dir="up-left"]    { top: 10px;  left: 10px;  }
-  .g-arrow[data-dir="up-right"]   { top: 10px;  right: 10px; }
-  .g-arrow[data-dir="down-left"]  { bottom: 10px; left: 10px;  }
-  .g-arrow[data-dir="down-right"] { bottom: 10px; right: 10px; }
 
   .instruction {
     font-size: 12px;
@@ -554,18 +516,6 @@
   <div class="instruction">Keep your gaze on the red dot</div>
 </div>
 
-<!-- Compass gaze arrows around the fixation dot -->
-<div id="gazeCompass">
-  <div class="g-arrow" data-dir="up"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></div>
-  <div class="g-arrow" data-dir="down"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m5 12 7 7 7-7"/></svg></div>
-  <div class="g-arrow" data-dir="left"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></div>
-  <div class="g-arrow" data-dir="right"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
-  <div class="g-arrow" data-dir="up-left"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 17 7 7"/><path d="M17 7H7v10"/></svg></div>
-  <div class="g-arrow" data-dir="up-right"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg></div>
-  <div class="g-arrow" data-dir="down-left"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17"/><path d="M17 7H7v10"/></svg></div>
-  <div class="g-arrow" data-dir="down-right"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10"/><path d="M7 7v10h10"/></svg></div>
-</div>
-
 <!-- VFT Start button (shown on fixation screen after baseline) -->
 <button id="vftStartBtn" onclick="openEyeSelect()">Retake Field Test</button>
 
@@ -759,75 +709,7 @@ function getGazeDirection(iL, iR, iLv, iRv) {
   return 'center';
 }
 
-// ===== Compass Gaze Direction System =====
-// Uses a sliding-window majority vote to eliminate spastic single-frame changes.
-// In single-eye mode the iris signal can be noisier, so we use a longer vote
-// window and a longer hold before snapping back to "center".
-const COMPASS_ELS = {};
-document.querySelectorAll('.g-arrow').forEach(el => {
-  COMPASS_ELS[el.dataset.dir] = el;
-});
-
-// Vote window: how many consecutive same-direction frames are needed to change
-// the displayed direction. Higher = smoother but slightly more latency.
-const GAZE_VOTE_WINDOW   = 6;   // frames that must agree before switching
-const GAZE_HOLD_FRAMES   = 10;  // frames to hold a non-center arrow before clearing
-
-// Rolling history buffer
-const GAZE_HISTORY_SIZE = GAZE_VOTE_WINDOW;
-let gazeHistory = [];            // ring buffer of raw directions
-let gazeDisplayDir = 'center';
-let gazeHoldCount  = 0;
-
-function updateGazeArrow(rawDir) {
-  // Push into history, keeping only the last N frames
-  gazeHistory.push(rawDir);
-  if (gazeHistory.length > GAZE_HISTORY_SIZE) gazeHistory.shift();
-
-  // Majority vote across the history window
-  const freq = {};
-  gazeHistory.forEach(d => { freq[d] = (freq[d] || 0) + 1; });
-  let bestDir = 'center', bestCount = 0;
-  for (const [dir, cnt] of Object.entries(freq)) {
-    if (cnt > bestCount) { bestDir = dir; bestCount = cnt; }
-  }
-
-  // Only switch if the winning direction has a clear majority (> 50% of frames)
-  let candidate = gazeDisplayDir;
-  if (bestCount >= Math.ceil(GAZE_HISTORY_SIZE * 0.55)) {
-    candidate = bestDir;
-  }
-
-  // Apply hold logic: don't jump back to "center" until we've held the
-  // current non-center direction for GAZE_HOLD_FRAMES
-  let newDisplay = candidate;
-  if (candidate === 'center' && gazeDisplayDir !== 'center') {
-    gazeHoldCount++;
-    if (gazeHoldCount < GAZE_HOLD_FRAMES) {
-      newDisplay = gazeDisplayDir;   // keep the arrow lit a bit longer
-    } else {
-      gazeHoldCount = 0;
-    }
-  } else if (candidate !== 'center') {
-    gazeHoldCount = 0;
-  }
-
-  if (newDisplay === gazeDisplayDir) return;   // nothing changed — skip DOM update
-  gazeDisplayDir = newDisplay;
-
-  Object.entries(COMPASS_ELS).forEach(([dir, el]) => {
-    if (dir === gazeDisplayDir) {
-      el.classList.add('lit');
-    } else {
-      el.classList.remove('lit');
-    }
-  });
-}
-
-function setCompassVftMode(active) {
-  const compass = document.getElementById('gazeCompass');
-  compass.style.zIndex = active ? '115' : '10';
-}
+// Gaze direction arrows removed
 
 // ===== Baseline =====
 function collectBaseline(iL, iR, yaw, pitch, fw, iLv, iRv) {
@@ -948,9 +830,6 @@ async function loop() {
         deviation = calculateDeviation(smoothedIL, smoothedIR, yaw, pitch, smoothedILv, smoothedIRv);
         currentDeviation = deviation;
 
-        const dir = getGazeDirection(smoothedIL, smoothedIR, smoothedILv, smoothedIRv);
-        updateGazeArrow(dir);
-
         const iT = 0.12, yT = 12, pT = 10;
         const iLdev = Math.abs(smoothedIL - baseline.iL);
         const iRdev = Math.abs(smoothedIR - baseline.iR);
@@ -1051,9 +930,9 @@ async function loop() {
 //  already finalised (hit, miss, or the VFT has been stopped).
 // ─────────────────────────────────────────────────────────────────────────
 
-const VFT_STIM_DURATION = 200; // ms stimulus on-screen
+const VFT_STIM_DURATION = 250; // ms stimulus on-screen
 const VFT_ISI = [800, 1400];   // inter-stimulus interval range (ms)
-const VFT_GRACE = 300;         // ms after stim-off to accept a "miss" response
+const VFT_GRACE = 600;         // ms after stim-off — covers up to ~850ms total RT from stim start
 const VFT_POSITIONS = [
   { id: 'TL', label: 'Top-Left',     dx: -0.28, dy: -0.28 },
   { id: 'TR', label: 'Top-Right',    dx:  0.28, dy: -0.28 },
@@ -1230,7 +1109,6 @@ function launchVFT() {
   vftAbortTimers();   // clean slate — kills any leftover timers from a previous run
 
   vftRunning = true;
-  setCompassVftMode(true);
   document.getElementById('vftScreen').classList.add('active');
 
   if (activeEye) {
@@ -1362,24 +1240,16 @@ function onVFTKey(e) {
   if (!vftRunning || !vftActiveTrial) return;
   if (vftActiveTrial.phase === 'done') return;
 
-  // Only count as a HIT if the stimulus is currently visible OR we're in the grace window
-  const phase = vftActiveTrial.phase; // 'stim' or 'grace'
+  // Accept a HIT during both 'stim' (dot visible) and 'grace' (dot just hidden).
+  // Reaction times of 300–700ms are normal — grace window covers the tail.
+  const phase = vftActiveTrial.phase;
   if (phase !== 'stim' && phase !== 'grace') return;
 
   const rt = Date.now() - vftActiveTrial.stimStart;
-  // Ignore implausibly fast responses (< 100 ms) — these are likely accidental
-  if (rt < 100) return;
+  // Ignore implausibly fast presses (< 80ms from stim start — definitely accidental)
+  if (rt < 80) return;
 
-  // Only credit a HIT if the dot was visible when the patient pressed space
-  // If the dot has already hidden (grace phase) this counts as a false-positive press
-  // and we do NOT record it as a hit — prevents gaming and handles mis-clicks
-  if (phase === 'grace') {
-    // Dot already gone — press happened after stim window; treat as a miss
-    // (The grace timer will naturally fire the miss — just ignore this keypress)
-    return;
-  }
-
-  // phase === 'stim': dot is visible right now — record as HIT
+  // Both stim and grace phases count as a HIT — patient saw the dot and responded.
   vftActiveTrial.rt = rt;
   finalizeTrial(vftActiveTrial.id, true);
 }
@@ -1422,7 +1292,6 @@ function sendVFTTrialResult(trial, hit) {
 function endVFT() {
   vftRunning = false;    // set BEFORE vftAbortTimers so any in-flight finalizeTrial guards bail out
   vftAbortTimers();      // cancel all pending timers, clean up trial state
-  setCompassVftMode(false);
   document.removeEventListener('keydown', onVFTKey);
 
   const finalThresholds = {};
