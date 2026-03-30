@@ -1268,7 +1268,8 @@ function runVFTTrial() {
     // Give 300ms grace window after stim
     vftGraceTimer = setTimeout(() => {
       if (!trial.responded) {
-        // Miss — mark responded so ISI keypresses can't re-trigger this trial
+        console.log(`[VFT Debug] MISS - Pos: ${trial.posId} | Lum: ${lum} (Timer expired)`);
+        
         trial.responded = true;
         recordVFTResponse(trial.posId, lum, false);
         sendVFTTrialResult(trial, false);
@@ -1287,24 +1288,33 @@ function onVFTKey(e) {
   flash.classList.add('flash');
   setTimeout(() => flash.classList.remove('flash'), 100);
 
-  // Only accept a hit if the stimulus is actually on-screen (vftStimVisible),
-  // OR within the 300ms grace window AFTER it disappeared (stimStart + duration has passed).
-  // Explicitly reject presses that arrive before the dot has appeared (stimStart not yet
-  // reached VFT_STIM_DURATION) — those were registering as false hits and locking the
-  // bracket hi at whatever the opening luminance was for that position.
-  const stimShownFor = vftCurrentTrial ? Date.now() - vftCurrentTrial.stimStart : -1;
-  const inGraceWindow = stimShownFor >= VFT_STIM_DURATION && stimShownFor < VFT_STIM_DURATION + 300;
-  if (vftCurrentTrial && !vftCurrentTrial.responded && (vftStimVisible || inGraceWindow)) {
+  // If there's an active trial that hasn't timed out yet
+  if (vftCurrentTrial && !vftCurrentTrial.responded) {
     const rt = Date.now() - vftCurrentTrial.stimStart;
+
+    // Anti-spam: ignore impossible human reaction times (< 100ms)
+    // This safely replaces the brittle absolute-time math that was failing under lag.
+    if (rt < 100) {
+      console.warn(`[VFT Debug] Ignored early predictive press (RT: ${rt}ms)`);
+      return;
+    }
+
+    console.log(`[VFT Debug] HIT  - Pos: ${vftCurrentTrial.posId} | Lum: ${vftCurrentTrial.luminance} | RT: ${rt}ms`);
+
     vftCurrentTrial.responded = true;
     vftCurrentTrial.rt = rt;
     recordVFTResponse(vftCurrentTrial.posId, vftCurrentTrial.luminance, true);
     sendVFTTrialResult(vftCurrentTrial, true);
+    
+    // Clear the timers so it doesn't trigger a miss later
     clearTimeout(vftStimTimer);
     clearTimeout(vftGraceTimer);
+    
     vftStimVisible = false;
     drawVFTScene(null, 0);
     scheduleNextVFTTrial();
+  } else {
+    console.log(`[VFT Debug] Space pressed, but ignored (In Inter-Stimulus Interval)`);
   }
 }
 
