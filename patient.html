@@ -1030,26 +1030,35 @@ function recordVFTResponse(posId, luminance, hit) {
   const s = vftState[posId];
   s.responses.push({ luminance, hit });
 
-  // Binary-search bracket update (same as before, robust)
-  if (hit) {
-    s.hi = luminance;
-  } else {
-    s.lo = luminance;
-  }
-
-  // Convergence: bracket width ≤ 4 OR we've had 3+ reversals
-  const bracketWidth = s.hi - s.lo;
-  if (bracketWidth <= 4 || s.reversals >= 3) {
-    s.done = true;
-  }
-
-  // Track reversals for step-size halving
+  // ── 1. Count reversals FIRST so convergence check sees the updated value ──
+  // (Previously reversals were counted after the done-check, meaning the 3rd
+  // reversal would never fire the s.reversals>=3 guard on the same trial.)
   const dir = hit ? 'down' : 'up';
   if (s.lastDir !== null && dir !== s.lastDir) {
     s.reversals++;
     s.step = Math.max(4, Math.floor(s.step / 2));
   }
   s.lastDir = dir;
+
+  // ── 2. Update bracket ─────────────────────────────────────────────────────
+  if (hit) {
+    s.hi = Math.min(s.hi, luminance); // hit: we know patient can see this → ceiling can only drop
+  } else {
+    s.lo = Math.max(s.lo, luminance); // miss: floor can only rise
+  }
+
+  // Guard: if bracket inverted (shouldn't happen but be safe), collapse to midpoint
+  if (s.lo >= s.hi) {
+    const mid = Math.round((s.lo + s.hi) / 2);
+    s.lo = Math.max(0,   mid - 2);
+    s.hi = Math.min(255, mid + 2);
+  }
+
+  // ── 3. Convergence: bracket width ≤ 4 OR 3+ reversals (now using updated count) ──
+  const bracketWidth = s.hi - s.lo;
+  if (bracketWidth <= 4 || s.reversals >= 3) {
+    s.done = true;
+  }
 }
 
 function getThresholdEstimate(posId) {
