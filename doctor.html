@@ -153,11 +153,20 @@
     display: block;
     border-radius: 6px;
   }
+  /* High-quality canvas renderer replaces img */
+  #camCanvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    border-radius: 6px;
+    image-rendering: auto;
+  }
   .cam-overlay-info {
     position: absolute;
     bottom: 8px; left: 8px;
     display: flex; gap: 6px; align-items: center;
-    background: rgba(0,0,0,0.7);
+    background: rgba(0,0,0,0.72);
     padding: 4px 8px;
     border-radius: 4px;
     backdrop-filter: blur(4px);
@@ -168,6 +177,19 @@
     animation: blink 1.2s ease-in-out infinite;
   }
   .cam-rec-label { font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.7); }
+  .cam-stats-overlay {
+    position: absolute;
+    top: 8px; right: 8px;
+    display: flex; gap: 5px; flex-direction: column; align-items: flex-end;
+  }
+  .cam-stat-pill {
+    background: rgba(0,0,0,0.72);
+    padding: 3px 7px; border-radius: 3px;
+    font-size: 8px; letter-spacing: 1px; text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+    backdrop-filter: blur(4px);
+  }
+  .cam-stat-pill span { color: var(--accent); font-weight: 700; }
 
   /* Gaze direction display */
   .gaze-dir-block {
@@ -445,10 +467,14 @@
     <div class="cam-card">
       <div class="plbl">Live Camera Feed</div>
       <div class="cam-wrap">
-        <img id="camFeed" src="" alt="Patient camera feed" style="opacity:0;transition:opacity 0.3s;">
+        <canvas id="camCanvas"></canvas>
         <div class="cam-overlay-info">
           <div class="cam-rec-dot"></div>
           <div class="cam-rec-label">Live</div>
+        </div>
+        <div class="cam-stats-overlay">
+          <div class="cam-stat-pill">FPS <span id="camFpsLabel">—</span></div>
+          <div class="cam-stat-pill">Q <span id="camQLabel">—</span></div>
         </div>
       </div>
     </div>
@@ -575,6 +601,40 @@ for (let i = 0; i < 60; i++) {
   const s = document.createElement('div'); s.className = 'tseg'; tline.appendChild(s);
 }
 
+// ===== High-quality canvas camera renderer =====
+const camCanvas = document.getElementById('camCanvas');
+const camCtx = camCanvas.getContext('2d');
+let camFrameCount = 0, camLastFpsTs = Date.now(), camDisplayFps = 0;
+let camImg = new Image(); // reusable image object — avoids creating GC pressure
+let camPending = false;
+
+camImg.onload = () => {
+  // Match canvas to incoming resolution
+  if (camCanvas.width !== camImg.naturalWidth || camCanvas.height !== camImg.naturalHeight) {
+    camCanvas.width = camImg.naturalWidth;
+    camCanvas.height = camImg.naturalHeight;
+  }
+  camCtx.drawImage(camImg, 0, 0);
+  camPending = false;
+
+  // FPS tracking
+  camFrameCount++;
+  const now = Date.now();
+  if (now - camLastFpsTs >= 1000) {
+    camDisplayFps = Math.round(camFrameCount / ((now - camLastFpsTs) / 1000));
+    camFrameCount = 0;
+    camLastFpsTs = now;
+    document.getElementById('camFpsLabel').textContent = camDisplayFps;
+  }
+};
+
+function renderCamFrame(dataUrl) {
+  if (camPending) return; // skip if previous frame still decoding (natural back-pressure)
+  camPending = true;
+  camImg.src = dataUrl;
+}
+
+
 // WebSocket connection
 let ws = null;
 function connectWS() {
@@ -662,9 +722,13 @@ function handleMessage(d) {
   }
 
   if (d.type === 'cam_frame') {
-    const img = document.getElementById('camFeed');
-    img.src = d.frame;
-    img.style.opacity = '1';
+    renderCamFrame(d.frame);
+    if (d.quality) document.getElementById('camQLabel').textContent = Math.round(d.quality * 100) + '%';
+  }
+
+  if (d.type === 'cam_stats') {
+    document.getElementById('camFpsLabel').textContent = d.fps;
+    document.getElementById('camQLabel').textContent = Math.round(d.quality * 100) + '%';
   }
 
   if (d.type === 'gaze') {
