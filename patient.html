@@ -645,15 +645,15 @@ function calculateDeviation(iL, iR, yaw, pitch, iLv, iRv) {
 
   let horizIrisDeg, vertIrisDeg;
 
-  if (activeEye === 'left') {
+if (activeEye === 'left') {
     horizIrisDeg = irisRatioDeltaToDegrees(Math.abs(iL - baseline.iL));
     const iLvD = baseline.iLv !== undefined ? Math.abs(iLv - baseline.iLv) : 0;
     vertIrisDeg = irisRatioDeltaToDegrees(iLvD) * 0.7;
-  } else if (activeEye === 'right') {
+} else if (activeEye === 'right') {
     horizIrisDeg = irisRatioDeltaToDegrees(Math.abs(iR - baseline.iR));
     const iRvD = baseline.iRv !== undefined ? Math.abs(iRv - baseline.iRv) : 0;
     vertIrisDeg = irisRatioDeltaToDegrees(iRvD) * 0.7;
-  } else {
+} else {
     horizIrisDeg = irisRatioDeltaToDegrees((Math.abs(iL - baseline.iL) + Math.abs(iR - baseline.iR)) / 2);
     const iLvD = baseline.iLv !== undefined ? Math.abs(iLv - baseline.iLv) : 0;
     const iRvD = baseline.iRv !== undefined ? Math.abs(iRv - baseline.iRv) : 0;
@@ -686,13 +686,13 @@ function getGazeDirection(iL, iR, iLv, iRv) {
   const VERT_THRESH  = 0.025;
 
   let horizDev, vertDev;
-  if (activeEye === 'left') {
-    horizDev = iL - baseline.iL;
-    vertDev  = iLv - baseline.iLv;
-  } else if (activeEye === 'right') {
+if (activeEye === 'left') {
     horizDev = iR - baseline.iR;
     vertDev  = iRv - baseline.iRv;
-  } else {
+} else if (activeEye === 'right') {
+    horizDev = iL - baseline.iL;
+    vertDev  = iLv - baseline.iLv;
+}else {
     horizDev = ((iL - baseline.iL) + (iR - baseline.iR)) / 2;
     vertDev  = ((iLv - baseline.iLv) + (iRv - baseline.iRv)) / 2;
   }
