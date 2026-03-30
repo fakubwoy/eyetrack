@@ -597,8 +597,8 @@ function getGazeDirection(iL, iR, iLv, iRv) {
   const VERT_THRESH  = 0.025;
   const horizDev = ((iL - baseline.iL) + (iR - baseline.iR)) / 2;
   const vertDev  = ((iLv - baseline.iLv) + (iRv - baseline.iRv)) / 2;
-  const goRight = horizDev >  HORIZ_THRESH;
-  const goLeft  = horizDev < -HORIZ_THRESH;
+  const goRight = horizDev < -HORIZ_THRESH;
+  const goLeft  = horizDev >  HORIZ_THRESH;
   const goDown  = vertDev  >  VERT_THRESH;
   const goUp    = vertDev  < -VERT_THRESH;
   if (goRight && goUp)   return 'up-right';
@@ -1198,11 +1198,16 @@ async function boot() {
   document.getElementById('initOverlay').style.display = 'none';
   document.getElementById('fixationScreen').classList.add('active');
   document.getElementById('baselinePrompt').classList.add('show');
+  // Hide the manual button — baseline starts automatically after a short settle delay
+  document.getElementById('baselineBtn').style.display = 'none';
   running = true;
   sendGazeData({ type: 'session_start', ts: Date.now() });
   sendScreenMetrics();
   startCameraStream();
   requestAnimationFrame(loop);
+  // Auto-begin baseline after 1.5s so the face mesh settles on the first frame
+  document.getElementById('baselineMsg').textContent = 'Look at the red dot — baseline starting…';
+  setTimeout(() => startBaselineCreation(), 1500);
 }
 
 window.addEventListener('resize', () => {
