@@ -151,6 +151,9 @@
     text-shadow: 0 0 20px rgba(0,240,176,0.5);
     min-width: 52px;
     text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .gaze-arrow-big.center { color: var(--muted); text-shadow: none; font-size: 28px; }
   .gaze-dir-info { display: flex; flex-direction: column; gap: 4px; }
@@ -236,7 +239,7 @@
     animation: blink 1.2s ease-in-out infinite;
   }
   .vft-status-dot.done { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
-  .vft-status-label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text); }
+  .vft-status-label { display: flex; align-items: center; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text); }
   .vft-status-sub { font-size: 9px; color: var(--muted); margin-left: auto; }
 
   /* VFT corner map */
@@ -306,10 +309,10 @@
     font-family: var(--mono); font-size: 10px;
     letter-spacing: 1.5px; text-transform: uppercase;
     border-radius: 4px; cursor: pointer; transition: background 0.2s;
-    display: none;
+    display: none; align-items: center; justify-content: center;
   }
   .csv-btn:hover { background: rgba(180,143,255,0.22); }
-  .csv-btn.show { display: block; }
+  .csv-btn.show { display: flex; }
 
   /* ===== EYE-AWARE VFT STYLES ===== */
   .eye-tab-row {
@@ -318,10 +321,12 @@
   .eye-tab {
     flex: 1; padding: 7px 0;
     font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase;
-    text-align: center; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 4px;
     border: 1px solid var(--border);
     color: var(--muted); background: var(--surface2);
     transition: all 0.3s;
+    position: relative;
   }
   .eye-tab.active-left {
     border-color: rgba(0,240,176,0.4); color: var(--accent);
@@ -332,24 +337,18 @@
     background: var(--purple-dim);
   }
   .eye-tab.done { opacity: 0.55; }
-  .eye-tab.done::after { content: ' ✓'; }
-
-  .eye-result-block {
-    background: var(--surface2); border-radius: 5px; padding: 9px 10px;
-    margin-bottom: 8px; border: 1px solid transparent;
-    transition: border-color 0.3s;
+  .eye-tab.done::after {
+    content: '';
+    display: inline-block;
+    width: 10px; height: 10px;
+    margin-left: 6px;
+    vertical-align: -1px;
+    background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 24 24" fill="none" stroke="%2300f0b0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><polyline points="20 6 9 17 4 12"/></svg>');
+    background-size: contain; background-repeat: no-repeat;
   }
-  .eye-result-block.left-block { border-color: rgba(0,240,176,0.15); }
-  .eye-result-block.right-block { border-color: rgba(180,143,255,0.15); }
-  .eye-block-hd {
-    font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase;
-    margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+  .eye-tab.active-right.done::after {
+    background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 24 24" fill="none" stroke="%23b48fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><polyline points="20 6 9 17 4 12"/></svg>');
   }
-  .eye-block-hd .eye-dot {
-    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-  }
-  .eye-dot.left { background: var(--accent); }
-  .eye-dot.right { background: var(--purple); }
 
   /* Threshold bars dual-eye view */
   .dual-thresh-grid {
@@ -381,10 +380,10 @@
     font-family: var(--mono); font-size: 10px;
     letter-spacing: 1.5px; text-transform: uppercase;
     border-radius: 4px; cursor: pointer; transition: background 0.2s;
-    display: none;
+    display: none; align-items: center; justify-content: center;
   }
   .csv-btn-combined:hover { background: rgba(0,240,176,0.18); }
-  .csv-btn-combined.show { display: block; }
+  .csv-btn-combined.show { display: flex; }
 
   /* Threshold control */
   .srow { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
@@ -476,7 +475,9 @@
     <div class="cam-card">
       <div class="plbl">Patient Info</div>
       <div class="gaze-dir-block">
-        <div class="gaze-arrow-big center" id="gazeDirArrow">●</div>
+        <div class="gaze-arrow-big center" id="gazeDirArrow">
+          <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>
+        </div>
         <div class="gaze-dir-info">
           <div class="gaze-dir-label">Eye Direction</div>
           <div class="gaze-dir-value" id="gazeDirText">Center</div>
@@ -554,8 +555,14 @@
 
       <!-- Eye status tabs -->
       <div class="eye-tab-row">
-        <div class="eye-tab" id="eyeTabLeft">👁 Left Eye</div>
-        <div class="eye-tab" id="eyeTabRight">Right Eye 👁</div>
+        <div class="eye-tab" id="eyeTabLeft">
+          <svg style="margin-right: 6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          Left Eye
+        </div>
+        <div class="eye-tab" id="eyeTabRight">
+          Right Eye
+          <svg style="margin-left: 6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
       </div>
 
       <div class="vft-status-row">
@@ -654,8 +661,14 @@
       <div style="font-size:9px;color:var(--muted);margin-top:6px;" id="vftTrialCount">0 / 0 trials</div>
 
       <!-- Per-eye download buttons -->
-      <button class="csv-btn" id="csvDownloadBtn" onclick="downloadVFTCSV('last')">⬇ Download Eye CSV</button>
-      <button class="csv-btn-combined" id="csvCombinedBtn" onclick="downloadVFTCSV('combined')">⬇ Download Combined CSV (Both Eyes)</button>
+      <button class="csv-btn" id="csvDownloadBtn" onclick="downloadVFTCSV('last')">
+        <svg style="margin-right: 6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Eye CSV
+      </button>
+      <button class="csv-btn-combined" id="csvCombinedBtn" onclick="downloadVFTCSV('combined')">
+        <svg style="margin-right: 6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Combined CSV (Both Eyes)
+      </button>
     </div>
 
     <div class="panel">
@@ -702,11 +715,22 @@ function connectWS() {
     document.getElementById('connDot').className = 'conn-dot connected';
     document.getElementById('connLabel').textContent = 'Connected · No patient';
     addAlert('Doctor monitor connected — waiting for patient...', 'i');
+    lastPatientTs = Date.now(); // Reset watchdog timer on fresh connection
   };
 
-  ws.onmessage = (e) => {
-    try { const data = JSON.parse(e.data); handleMessage(data); }
-    catch(ex) { /* ignore */ }
+  ws.onmessage = async (e) => {
+    try {
+      // Safeguard: Ensure we process the incoming frame as text
+      let text = e.data;
+      if (text instanceof Blob) {
+        text = await text.text();
+      }
+      const data = JSON.parse(text); 
+      handleMessage(data); 
+    }
+    catch(ex) { 
+      console.error("WS Parse Error:", ex); 
+    }
   };
 
   ws.onclose = () => {
@@ -733,16 +757,17 @@ setInterval(() => {
   }
 }, 1000);
 
+// SVG Icons mapping for Gaze directions
 const ARROWS = {
-  'center': { sym: '●', label: 'Center' },
-  'right': { sym: '→', label: 'Right' },
-  'left': { sym: '←', label: 'Left' },
-  'up': { sym: '↑', label: 'Up' },
-  'down': { sym: '↓', label: 'Down' },
-  'up-right': { sym: '↗', label: 'Up-Right' },
-  'up-left': { sym: '↖', label: 'Up-Left' },
-  'down-right': { sym: '↘', label: 'Down-Right' },
-  'down-left': { sym: '↙', label: 'Down-Left' },
+  'center': { sym: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>', label: 'Center' },
+  'right': { sym: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>', label: 'Right' },
+  'left': { sym: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>', label: 'Left' },
+  'up': { sym: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>', label: 'Up' },
+  'down': { sym: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7 7"/></svg>', label: 'Down' },
+  'up-right': { sym: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>', label: 'Up-Right' },
+  'up-left': { sym: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 17 7 7"/><path d="M17 7H7v10"/></svg>', label: 'Up-Left' },
+  'down-right': { sym: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10"/><path d="M17 7v10H7"/></svg>', label: 'Down-Right' },
+  'down-left': { sym: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17"/><path d="M7 7v10h10"/></svg>', label: 'Down-Left' },
 };
 
 function handleMessage(d) {
@@ -861,7 +886,7 @@ function handleMessage(d) {
   if (d.type === 'vft_complete') {
     const eye = d.eye || currentTestEye;
     document.getElementById('vftDot').className = 'vft-status-dot done';
-    document.getElementById('vftStatusLabel').textContent = `${eye ? eye.charAt(0).toUpperCase()+eye.slice(1)+' eye' : ''} complete`;
+    document.getElementById('vftStatusLabel').innerHTML = `${eye ? eye.charAt(0).toUpperCase()+eye.slice(1)+' eye' : ''} complete`;
     document.getElementById('vftProgressFill2').style.width = '100%';
     const total = d.totalTrials || vftTrialCount;
     document.getElementById('vftStatusSub').textContent = `${total}/${total}`;
@@ -895,7 +920,9 @@ function handleMessage(d) {
       vftCumulativeLog = d.cumulativeTrialLog;
     }
     document.getElementById('csvCombinedBtn').classList.add('show');
-    document.getElementById('vftStatusLabel').textContent = 'Both eyes complete ✓';
+    
+    const checkSvg = `<svg style="margin-left: 6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+    document.getElementById('vftStatusLabel').innerHTML = `Both eyes complete ${checkSvg}`;
     document.getElementById('vftLiveLog').textContent = 'Both eyes tested. Download combined CSV below.';
     addAlert('Both eyes complete — combined CSV available for download', 'c');
   }
@@ -908,7 +935,7 @@ function handleMessage(d) {
     if (d.trialLog && d.trialLog.length > 0) {
       vftLastTrialLog = d.trialLog;
       document.getElementById('csvDownloadBtn').classList.add('show');
-      document.getElementById('csvDownloadBtn').textContent = '⬇ Download Partial Eye CSV';
+      document.getElementById('csvDownloadBtn').innerHTML = '<svg style="margin-right: 6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download Partial Eye CSV';
     }
   }
 }
@@ -916,14 +943,18 @@ function handleMessage(d) {
 function updateEyeTabs(eye, done) {
   const leftTab  = document.getElementById('eyeTabLeft');
   const rightTab = document.getElementById('eyeTabRight');
+  
+  // Clear any existing classes but maintain the inner SVGs/Text 
+  // (We use classList methods so we don't clobber the inline SVG HTML content)
   leftTab.className  = 'eye-tab';
   rightTab.className = 'eye-tab';
+  
   if (done) {
-    if (eye === 'left')  { leftTab.className  = 'eye-tab done active-left'; }
-    if (eye === 'right') { rightTab.className = 'eye-tab done active-right'; }
+    if (eye === 'left')  { leftTab.classList.add('done', 'active-left'); }
+    if (eye === 'right') { rightTab.classList.add('done', 'active-right'); }
   } else {
-    if (eye === 'left')  { leftTab.className  = 'eye-tab active-left'; }
-    if (eye === 'right') { rightTab.className = 'eye-tab active-right'; }
+    if (eye === 'left')  { leftTab.classList.add('active-left'); }
+    if (eye === 'right') { rightTab.classList.add('active-right'); }
   }
 }
 
@@ -1060,7 +1091,7 @@ function updateDashboard(d) {
 
   // Deviation
   const devEl = document.getElementById('devValue');
-  devEl.innerHTML = `${d.deviation.toFixed(1)}<span class="dev-unit">°</span>`;
+  devEl.innerHTML = `${(d.deviation || 0).toFixed(1)}<span class="dev-unit">°</span>`;
   if (d.deviation >= d.threshold) devEl.className = 'dev-value danger';
   else if (d.deviation >= d.threshold * 0.7) devEl.className = 'dev-value warn';
   else devEl.className = 'dev-value';
@@ -1103,7 +1134,7 @@ function updateDashboard(d) {
   if (d.gazeDir) {
     const info = ARROWS[d.gazeDir] || ARROWS['center'];
     const arrowEl = document.getElementById('gazeDirArrow');
-    arrowEl.textContent = info.sym;
+    arrowEl.innerHTML = info.sym; // Injecting SVG directly
     arrowEl.className = 'gaze-arrow-big' + (d.gazeDir === 'center' ? ' center' : '');
     document.getElementById('gazeDirText').textContent = info.label;
     document.getElementById('gazeDirPill').textContent = 'Gaze: ' + info.label;
