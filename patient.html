@@ -288,6 +288,48 @@
     transition: opacity 0.1s;
   }
   #spaceFlash.flash { opacity: 1; }
+  /* ===== VFT countdown overlay ===== */
+  #vftCountdown {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.88);
+    z-index: 150;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+  }
+  #vftCountdown.active { display: flex; }
+  .cd-number {
+    font-family: var(--sans);
+    font-size: 110px;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+    text-shadow: 0 0 60px rgba(0,240,176,0.5);
+    animation: cdPop 0.85s ease-out;
+  }
+  @keyframes cdPop {
+    0%   { transform: scale(1.6); opacity: 0; }
+    40%  { opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .cd-label {
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.3);
+  }
+  .cd-hint {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--warn);
+    text-align: center;
+    max-width: 320px;
+    line-height: 2.2;
+  }
 </style>
 </head>
 <body>
@@ -312,6 +354,13 @@
   </div>
   <div class="err-box" id="errBox"></div>
   <button class="start-btn" id="startBtn" onclick="boot()">Start Session</button>
+</div>
+
+<!-- VFT countdown -->
+<div id="vftCountdown">
+  <div class="cd-number" id="cdNumber">3</div>
+  <div class="cd-label">Test begins in…</div>
+  <div class="cd-hint">⚠ Keep your eyes on the red dot<br>throughout the entire test</div>
 </div>
 
 <!-- Fixation screen -->
@@ -653,8 +702,9 @@ function collectBaseline(iL, iR, yaw, pitch, fw, iLv, iRv) {
     document.getElementById('baselineProgress').style.background = 'var(--accent)';
     if (!sessionStart) { sessionStart = Date.now(); setInterval(updateStats, 1000); }
     sendGazeData({ type: 'baseline_created', ts: Date.now() });
-    // Show VFT button
-    document.getElementById('vftStartBtn').classList.add('show');
+    document.getElementById('baselineMsg').textContent = 'Baseline set — test starting…';
+    // Auto-launch with a short pause so the patient can read the message
+    setTimeout(() => startVFT(), 1200);
   }
 }
 
@@ -890,11 +940,37 @@ function buildVFTTrialSequence() {
 
 function startVFT() {
   if (vftRunning) return;
+  document.getElementById('vftStartBtn').classList.remove('show');
+  document.getElementById('baselinePrompt').classList.remove('show');
+
+  // 3-2-1 countdown then launch
+  const overlay  = document.getElementById('vftCountdown');
+  const cdNumber = document.getElementById('cdNumber');
+  let n = 3;
+  cdNumber.textContent = n;
+  overlay.classList.add('active');
+
+  const tick = () => {
+    // Re-trigger pop animation
+    cdNumber.style.animation = 'none';
+    void cdNumber.offsetWidth;
+    cdNumber.style.animation = 'cdPop 0.85s ease-out';
+    n--;
+    if (n <= 0) {
+      overlay.classList.remove('active');
+      launchVFT();
+    } else {
+      cdNumber.textContent = n;
+      setTimeout(tick, 1000);
+    }
+  };
+  setTimeout(tick, 1000);
+}
+
+function launchVFT() {
   vftRunning = true;
   setCompassVftMode(true);
-  document.getElementById('vftStartBtn').classList.remove('show');
   document.getElementById('vftScreen').classList.add('active');
-  document.getElementById('baselinePrompt').classList.remove('show');
 
   vftCanvas = document.getElementById('vftCanvas');
   vftCtx2 = vftCanvas.getContext('2d');
@@ -906,12 +982,8 @@ function startVFT() {
 
   sendGazeData({ type: 'vft_start', ts: Date.now(), totalTrials: VFT_TOTAL_TRIALS });
 
-  // Draw fixation cross
   drawVFTScene(null, 0);
-
-  // Spacebar listener
   document.addEventListener('keydown', onVFTKey);
-
   scheduleNextVFTTrial();
 }
 
