@@ -350,6 +350,19 @@
   .vft-progress-wrap { height: 2px; background: var(--surface2); border-radius: 1px; overflow: hidden; margin-top: 4px; }
   #vftProgressFill2 { height: 100%; background: var(--purple); width: 0%; transition: width 0.3s; }
 
+  .csv-btn {
+    width: 100%; margin-top: 10px; padding: 9px;
+    background: rgba(180,143,255,0.10);
+    border: 1px solid rgba(180,143,255,0.35);
+    color: var(--purple);
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    border-radius: 4px; cursor: pointer; transition: background 0.2s;
+    display: none;
+  }
+  .csv-btn:hover { background: rgba(180,143,255,0.22); }
+  .csv-btn.show { display: block; }
+
   /* Threshold control */
   .srow { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
   .shd { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
@@ -571,6 +584,7 @@
       <div style="font-size:9px;color:var(--muted);margin-bottom:6px;">Test progress</div>
       <div class="vft-progress-wrap"><div id="vftProgressFill2"></div></div>
       <div style="font-size:9px;color:var(--muted);margin-top:6px;" id="vftTrialCount">0 / 0 trials</div>
+      <button class="csv-btn" id="csvDownloadBtn" onclick="downloadVFTCSV()">⬇ Download Test CSV</button>
     </div>
 
     <div class="panel">
@@ -594,6 +608,8 @@ let patientOnline = false;
 let vftTrialCount = 0;
 let vftTotalTrials = 0;
 let currentVFTStim = null; // { posId, luminance }
+let vftLastTrialLog = [];  // trial-by-trial data from last completed test
+let vftLastThresholds = {}; // final thresholds from last completed test
 
 // Build timeline
 const tline = document.getElementById('tline');
@@ -753,6 +769,9 @@ function handleMessage(d) {
   if (d.type === 'vft_start') {
     vftTotalTrials = d.totalTrials;
     vftTrialCount = 0;
+    vftLastTrialLog = [];
+    vftLastThresholds = {};
+    document.getElementById('csvDownloadBtn').classList.remove('show');
     document.getElementById('vftDot').className = 'vft-status-dot running';
     document.getElementById('vftStatusLabel').textContent = 'Test running';
     document.getElementById('vftStatusSub').textContent = `0/${vftTotalTrials}`;
@@ -809,11 +828,31 @@ function handleMessage(d) {
     const total = d.totalTrials || vftTrialCount;
     document.getElementById('vftStatusSub').textContent = `${total}/${total}`;
     document.getElementById('vftTrialCount').textContent = `${total} / ${total} trials`;
+    if (d.trialLog && d.trialLog.length > 0) {
+      vftLastTrialLog = d.trialLog;
+    }
     if (d.thresholds) {
+      vftLastThresholds = d.thresholds;
       updateVFTThresholds(d.thresholds);
       const th = d.thresholds;
       const fmt = id => (th[id] !== null && th[id] !== undefined) ? th[id] : '?';
       addAlert(`VFT complete — TL=${fmt('TL')} TR=${fmt('TR')} BL=${fmt('BL')} BR=${fmt('BR')}`, 'p');
+    } else {
+      addAlert('VFT complete', 'p');
+    }
+    // Show CSV download button once results are in
+    document.getElementById('csvDownloadBtn').classList.add('show');
+  }
+
+  if (d.type === 'vft_aborted') {
+    document.getElementById('vftDot').className = 'vft-status-dot';
+    document.getElementById('vftStatusLabel').textContent = 'Test aborted';
+    addAlert(`VFT aborted — ${d.trialsCompleted} trials recorded (${d.alertCount} off-centre events)`, 'o');
+    // Still store partial log if sent
+    if (d.trialLog && d.trialLog.length > 0) {
+      vftLastTrialLog = d.trialLog;
+      document.getElementById('csvDownloadBtn').classList.add('show');
+      document.getElementById('csvDownloadBtn').textContent = '⬇ Download Partial CSV';
     }
   }
 }
@@ -998,6 +1037,73 @@ function addAlert(msg, cls = 'i') {
 
 function clearFeed() { document.getElementById('alertFeed').innerHTML = ''; }
 function updateThreshDisplay(val) { document.getElementById('svDeg').textContent = val + '°'; }
+
+// ===== CSV Export =====
+function downloadVFTCSV() {
+  if (!vftLastTrialLog || vftLastTrialLog.length === 0) {
+    alert('No trial data available yet.');
+    return;
+  }
+
+  // Build header
+  const headers = [
+    'Trial #',
+    'Position ID',
+    'Position Label',
+    'Offset X (fraction of screen)',
+    'Offset Y (fraction of screen)',
+    'Luminance (0-255)',
+    'Seen (1=yes / 0=no)',
+    'Reaction Time (ms)',
+    'Timestamp (ms)'
+  ];
+
+  // Build threshold summary rows (appended at bottom)
+  const threshRows = Object.entries(vftLastThresholds).map(([id, val]) => {
+    const pos = { TL:'Top-Left', TR:'Top-Right', BL:'Bottom-Left', BR:'Bottom-Right' };
+    return `,,FINAL THRESHOLD — ${pos[id] || id},,,,${val !== null && val !== undefined ? val : '?'},,`;
+  });
+
+  const escape = v => {
+    const s = String(v === null || v === undefined ? '' : v);
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const rows = vftLastTrialLog.map(r => [
+    r.trial_number,
+    r.position_id,
+    r.position_label,
+    r.dx,
+    r.dy,
+    r.luminance,
+    r.seen,
+    r.rt_ms,
+    r.timestamp_ms
+  ].map(escape).join(','));
+
+  const csv = [
+    '# CenterGaze Visual Field Test Export',
+    `# Generated: ${new Date().toISOString()}`,
+    `# Total trials: ${vftLastTrialLog.length}`,
+    '',
+    headers.map(escape).join(','),
+    ...rows,
+    '',
+    '# Final Thresholds (0-255 scale  higher = better sensitivity)',
+    ...threshRows
+  ].join('\r\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href     = url;
+  a.download = `centergaze_vft_${ts}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+}
 </script>
 </body>
 </html>

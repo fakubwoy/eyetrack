@@ -1097,6 +1097,7 @@ let vftGraceTimer = null;
 let vftIsiTimer = null;
 let vftCanvas, vftCtx2;
 let vftStimVisible = false;
+let vftTrialLog = [];       // per-trial records for CSV export
 
 // Off-center abort tracking (rolling window)
 const VFT_ALERT_LIMIT  = 10;
@@ -1134,6 +1135,32 @@ function startVFT() {
 }
 
 function launchVFT() {
+  // ── Cancel ALL pending timers from any prior run FIRST ───────────────────
+  // This is critical: stale vftStimTimer / vftGraceTimer / vftIsiTimer from
+  // a previous (aborted or completed) run can fire AFTER initVFTState() resets
+  // the bracket, causing recordVFTResponse() to corrupt the fresh staircase
+  // for whichever position fires first (almost always TL, since it leads the
+  // round-robin queue).  Clearing here — before any state mutation — ensures
+  // no stale callback can touch the new run's data.
+  clearTimeout(vftStimTimer);
+  clearTimeout(vftGraceTimer);
+  clearTimeout(vftIsiTimer);
+  vftStimTimer  = null;
+  vftGraceTimer = null;
+  vftIsiTimer   = null;
+
+  // ── Reset stim visibility BEFORE adding the key listener ─────────────────
+  // If a previous run ended mid-stim this could still be true; resetting here
+  // (before the listener is re-added) prevents the very first spacebar press
+  // of the new run from registering as a hit before any dot has appeared.
+  vftStimVisible = false;
+
+  // ── Invalidate any lingering trial object from the old run ────────────────
+  // Mark it responded so that if a grace-window callback somehow still fires
+  // it will silently no-op rather than calling recordVFTResponse.
+  if (vftCurrentTrial) { vftCurrentTrial.responded = true; }
+  vftCurrentTrial = null;
+
   vftRunning = true;
   setCompassVftMode(true);
   document.getElementById('vftScreen').classList.add('active');
@@ -1146,17 +1173,12 @@ function launchVFT() {
   vftTrialIndex = 0;
   vftAlertTimes = [];
   vftLastAlertState = null;
-  vftCurrentTrial = null;
+  vftTrialLog = [];  // fresh log for this run
 
   const estTotal = vftEstimatedTotal();
   sendGazeData({ type: 'vft_start', ts: Date.now(), totalTrials: estTotal });
 
   drawVFTScene(null, 0);
-
-  // Reset stim visibility — if a previous run ended mid-stim this flag could be
-  // left true, letting the first spacebar of the new run register as a hit before
-  // any dot has appeared (always locks TL since it runs first).
-  vftStimVisible = false;
 
   // Remove-then-add prevents duplicate listeners stacking across retests.
   // Each duplicate would call recordVFTResponse twice per keypress, corrupting
@@ -1292,6 +1314,21 @@ function sendVFTTrialResult(trial, hit) {
   VFT_POSITIONS.forEach(p => {
     thresholds[p.id] = getThresholdEstimate(p.id);
   });
+
+  // Record trial for CSV export
+  const posInfo = VFT_POSITIONS.find(p => p.id === trial.posId);
+  vftTrialLog.push({
+    trial_number: vftTrialLog.length + 1,
+    position_id: trial.posId,
+    position_label: posInfo ? posInfo.label : trial.posId,
+    dx: posInfo ? posInfo.dx : '',
+    dy: posInfo ? posInfo.dy : '',
+    luminance: trial.luminance,
+    seen: hit ? 1 : 0,
+    rt_ms: hit ? (trial.rt || '') : '',
+    timestamp_ms: Date.now()
+  });
+
   sendGazeData({
     type: 'vft_response',
     trialIndex: vftTrialIndex,
@@ -1310,16 +1347,20 @@ function abortVFT(alertCount) {
   setCompassVftMode(false);
   document.removeEventListener('keydown', onVFTKey);
 
-  // Cancel any pending trial timers
-  clearTimeout(vftStimTimer);
-  clearTimeout(vftGraceTimer);
-  clearTimeout(vftIsiTimer);
+  // Cancel any pending trial timers and null them out so launchVFT's
+  // pre-clear knows there is nothing left to cancel on a retake.
+  clearTimeout(vftStimTimer);  vftStimTimer  = null;
+  clearTimeout(vftGraceTimer); vftGraceTimer = null;
+  clearTimeout(vftIsiTimer);   vftIsiTimer   = null;
+  if (vftCurrentTrial) { vftCurrentTrial.responded = true; }
+  vftStimVisible = false;
 
   sendGazeData({
     type: 'vft_aborted',
     reason: 'too_many_off_center',
     alertCount,
     trialsCompleted: vftTrialIndex,
+    trialLog: vftTrialLog,
     ts: Date.now()
   });
 
@@ -1365,6 +1406,7 @@ function endVFT() {
     type: 'vft_complete',
     thresholds: finalThresholds,
     totalTrials: vftTrialIndex,
+    trialLog: vftTrialLog,
     ts: Date.now()
   });
 
