@@ -1293,27 +1293,33 @@ function onVFTKey(e) {
   if (e.code !== 'Space') return;
   e.preventDefault();
 
+  // STRICT FILTER: Ignore space presses completely if there's no active trial,
+  // or if the user has already responded to the current one.
+  // This effectively ignores presses before the test starts, between dots (ISI), 
+  // or during the 3-second countdown.
+  if (!vftCurrentTrial || vftCurrentTrial.responded) return;
+
+  const rt = Date.now() - vftCurrentTrial.stimStart;
+
+  // Ignore impossibly fast reaction times (<100ms) indicating anticipation
+  if (rt < 100) return;
+
+  // Visual feedback that a VALID press was successfully registered
   const flash = document.getElementById('spaceFlash');
   flash.classList.add('flash');
   setTimeout(() => flash.classList.remove('flash'), 100);
 
-  if (vftCurrentTrial && !vftCurrentTrial.responded) {
-    const rt = Date.now() - vftCurrentTrial.stimStart;
-
-    if (rt < 100) return;
-
-    vftCurrentTrial.responded = true;
-    vftCurrentTrial.rt = rt;
-    recordVFTResponse(vftCurrentTrial.posId, vftCurrentTrial.luminance, true);
-    sendVFTTrialResult(vftCurrentTrial, true);
-    
-    clearTimeout(vftStimTimer);
-    clearTimeout(vftGraceTimer);
-    
-    vftStimVisible = false;
-    drawVFTScene(null, 0);
-    scheduleNextVFTTrial();
-  }
+  vftCurrentTrial.responded = true;
+  vftCurrentTrial.rt = rt;
+  recordVFTResponse(vftCurrentTrial.posId, vftCurrentTrial.luminance, true);
+  sendVFTTrialResult(vftCurrentTrial, true);
+  
+  clearTimeout(vftStimTimer);
+  clearTimeout(vftGraceTimer);
+  
+  vftStimVisible = false;
+  drawVFTScene(null, 0);
+  scheduleNextVFTTrial();
 }
 
 function sendVFTTrialResult(trial, hit) {
