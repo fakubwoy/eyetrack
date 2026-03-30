@@ -1030,9 +1030,9 @@ function recordVFTResponse(posId, luminance, hit) {
   const s = vftState[posId];
   s.responses.push({ luminance, hit });
 
-  // ── 1. Count reversals FIRST so convergence check sees the updated value ──
-  // (Previously reversals were counted after the done-check, meaning the 3rd
-  // reversal would never fire the s.reversals>=3 guard on the same trial.)
+  // 1. Count reversals FIRST — so the convergence check below sees the updated count.
+  //    (Old order had reversals++ AFTER the done-check, meaning the 3rd reversal
+  //    never triggered s.reversals>=3 on the same trial it occurred.)
   const dir = hit ? 'down' : 'up';
   if (s.lastDir !== null && dir !== s.lastDir) {
     s.reversals++;
@@ -1040,23 +1040,22 @@ function recordVFTResponse(posId, luminance, hit) {
   }
   s.lastDir = dir;
 
-  // ── 2. Update bracket ─────────────────────────────────────────────────────
+  // 2. Update bracket — clamp so it can only ever narrow, never invert.
   if (hit) {
-    s.hi = Math.min(s.hi, luminance); // hit: we know patient can see this → ceiling can only drop
+    s.hi = Math.min(s.hi, luminance);
   } else {
-    s.lo = Math.max(s.lo, luminance); // miss: floor can only rise
+    s.lo = Math.max(s.lo, luminance);
   }
 
-  // Guard: if bracket inverted (shouldn't happen but be safe), collapse to midpoint
+  // Safety: if bracket somehow inverted, collapse to a safe 4-unit window
   if (s.lo >= s.hi) {
     const mid = Math.round((s.lo + s.hi) / 2);
     s.lo = Math.max(0,   mid - 2);
     s.hi = Math.min(255, mid + 2);
   }
 
-  // ── 3. Convergence: bracket width ≤ 4 OR 3+ reversals (now using updated count) ──
-  const bracketWidth = s.hi - s.lo;
-  if (bracketWidth <= 4 || s.reversals >= 3) {
+  // 3. Convergence check (now uses updated reversal count and narrowed bracket)
+  if ((s.hi - s.lo) <= 4 || s.reversals >= 3) {
     s.done = true;
   }
 }
@@ -1064,10 +1063,18 @@ function recordVFTResponse(posId, luminance, hit) {
 function getThresholdEstimate(posId) {
   const s = vftState[posId];
   if (s.responses.length === 0) return null;
+
   const hits   = s.responses.filter(r =>  r.hit).map(r => r.luminance);
   const misses = s.responses.filter(r => !r.hit).map(r => r.luminance);
-  if (hits.length   === 0) return 255;
-  if (misses.length === 0) return 0;
+
+  // If we only have evidence on one side so far, return the live bracket midpoint.
+  // Previously this returned sentinel extremes (255 or 0), making the doctor-side
+  // bar appear completely frozen until both a hit AND a miss had been recorded.
+  if (hits.length === 0 || misses.length === 0) {
+    return Math.round((s.lo + s.hi) / 2);
+  }
+
+  // Both sides present: midpoint between lowest-seen and highest-missed
   const minHit  = Math.min(...hits);
   const maxMiss = Math.max(...misses);
   return Math.round((minHit + maxMiss) / 2);
