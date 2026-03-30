@@ -269,90 +269,6 @@
   #vftStartBtn:hover { background: rgba(180,143,255,0.22); }
   #vftStartBtn.show { display: block; }
 
-  /* ===== VFT interrupted overlay ===== */
-  #vftInterrupted {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.92);
-    z-index: 200;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 20px;
-    text-align: center;
-    padding: 32px;
-  }
-  #vftInterrupted.active { display: flex; }
-  .vfti-icon {
-    font-size: 48px;
-    line-height: 1;
-    animation: vftiShake 0.5s ease-out;
-  }
-  @keyframes vftiShake {
-    0%,100% { transform: translateX(0); }
-    20%      { transform: translateX(-8px); }
-    40%      { transform: translateX(8px); }
-    60%      { transform: translateX(-5px); }
-    80%      { transform: translateX(5px); }
-  }
-  .vfti-title {
-    font-family: var(--sans);
-    font-size: 26px;
-    font-weight: 800;
-    color: var(--danger);
-    letter-spacing: 1px;
-  }
-  .vfti-reason {
-    font-size: 11px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.4);
-    max-width: 340px;
-    line-height: 2;
-  }
-  .vfti-stat {
-    font-size: 10px;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: var(--warn);
-  }
-  .vfti-hint {
-    font-size: 10px;
-    color: rgba(255,255,255,0.25);
-    letter-spacing: 1px;
-    max-width: 300px;
-    line-height: 2;
-    text-transform: uppercase;
-  }
-  .vfti-btn {
-    margin-top: 8px;
-    background: rgba(255,58,92,0.12);
-    border: 1px solid rgba(255,58,92,0.5);
-    color: var(--danger);
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    padding: 14px 32px;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-  .vfti-btn:hover { background: rgba(255,58,92,0.24); }
-  .vfti-dismiss {
-    font-size: 9px;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.2);
-    cursor: pointer;
-    background: none;
-    border: none;
-    font-family: var(--mono);
-    padding: 4px 8px;
-  }
-  .vfti-dismiss:hover { color: rgba(255,255,255,0.45); }
-
   /* ===== EYE SELECTION OVERLAY ===== */
   #eyeSelectOverlay {
     display: none;
@@ -614,17 +530,6 @@
 
 <!-- Active eye badge shown during VFT -->
 <div id="activeEyeBadge">👁 LEFT EYE</div>
-
-<!-- VFT interrupted -->
-<div id="vftInterrupted">
-  <div class="vfti-icon">👁️</div>
-  <div class="vfti-title">Test Interrupted</div>
-  <div class="vfti-reason">Too many off-center gaze events detected.<br>Reliable results cannot be recorded.</div>
-  <div class="vfti-stat" id="vftiStat"></div>
-  <div class="vfti-hint">Keep your eyes fixed on the red dot<br>for the full duration of the test.</div>
-  <button class="vfti-btn" onclick="retakeVFT()">↺ &nbsp;Retake Test</button>
-  <button class="vfti-dismiss" onclick="dismissVFTInterrupt()">dismiss &amp; return to main screen</button>
-</div>
 
 <!-- Fixation screen -->
 <div id="fixationScreen">
@@ -1047,20 +952,11 @@ async function loop() {
             lastState = 'o'; alerts++;
             document.getElementById('fixationDot').classList.add('pulse');
             setTimeout(() => document.getElementById('fixationDot').classList.remove('pulse'), 300);
-            
-            if (vftRunning && vftLastAlertState !== 'o') {
-              vftLastAlertState = 'o';
-              vftAlertTimes.push(now);
-              vftAlertTimes = vftAlertTimes.filter(t => now - t <= VFT_ALERT_WINDOW);
-              if (vftAlertTimes.length >= VFT_ALERT_LIMIT) {
-                abortVFT(vftAlertTimes.length);
-              }
-            }
           }
           if (lastState === 'o' && lastTick) offMs += now - lastTick;
         } else {
           awayStart = null;
-          if (lastState !== 'c') { lastState = 'c'; vftLastAlertState = 'c'; }
+          if (lastState !== 'c') { lastState = 'c'; }
           if (lastState === 'c' && lastTick) centerMs += now - lastTick;
         }
         state = lastState;
@@ -1210,11 +1106,6 @@ let vftCanvas, vftCtx2;
 let vftStimVisible = false;
 let vftTrialLog = [];
 
-const VFT_ALERT_LIMIT  = 10;
-const VFT_ALERT_WINDOW = 10000;
-let vftAlertTimes      = [];
-let vftLastAlertState  = null;
-
 function startVFT() {
   if (vftRunning) return;
 
@@ -1279,8 +1170,6 @@ function launchVFT() {
 
   initVFTState();
   vftTrialIndex = 0;
-  vftAlertTimes = [];
-  vftLastAlertState = null;
   vftTrialLog = [];
 
   const estTotal = vftEstimatedTotal();
@@ -1438,65 +1327,6 @@ function sendVFTTrialResult(trial, hit) {
     thresholds,
     ts: Date.now()
   });
-}
-
-function abortVFT(alertCount) {
-  if (!vftRunning) return;
-  vftRunning = false;
-  setCompassVftMode(false);
-  document.removeEventListener('keydown', onVFTKey);
-
-  clearTimeout(vftStimTimer);  vftStimTimer  = null;
-  clearTimeout(vftGraceTimer); vftGraceTimer = null;
-  clearTimeout(vftIsiTimer);   vftIsiTimer   = null;
-  if (vftCurrentTrial) { vftCurrentTrial.responded = true; }
-  vftStimVisible = false;
-
-  sendGazeData({
-    type: 'vft_aborted',
-    eye: activeEye || 'both',
-    reason: 'too_many_off_center',
-    alertCount,
-    trialsCompleted: vftTrialIndex,
-    trialLog: vftTrialLog,
-    ts: Date.now()
-  });
-
-  document.getElementById('vftiStat').textContent =
-    `${alertCount} off-centre events in ${(VFT_ALERT_WINDOW / 1000).toFixed(0)}s · ${vftTrialIndex} trials completed`;
-  document.getElementById('vftInterrupted').classList.add('active');
-
-  const icon = document.querySelector('.vfti-icon');
-  icon.style.animation = 'none';
-  void icon.offsetWidth;
-  icon.style.animation = 'vftiShake 0.5s ease-out';
-}
-
-function retakeVFT() {
-  document.getElementById('vftInterrupted').classList.remove('active');
-  document.getElementById('vftScreen').classList.remove('active');
-  document.getElementById('activeEyeBadge').classList.remove('show');
-  
-  setTimeout(() => {
-    baseline = null; baselineComplete = false; baselineSamples = []; baselineStartTime = null;
-    document.getElementById('baselinePrompt').classList.add('show');
-    document.getElementById('baselineMsg').textContent = `Re-calibrating ${activeEye || ''} eye — look at red dot`;
-    document.getElementById('baselineBtn').disabled = false;
-    document.getElementById('baselineBtn').textContent = 'Recalibrate & Restart';
-    document.getElementById('baselineBtn').style.borderColor = '';
-    document.getElementById('baselineBtn').style.color = '';
-    document.getElementById('baselineProgress').style.background = '';
-    setTimeout(() => startBaselineCreation(), 800);
-  }, 200);
-}
-
-function dismissVFTInterrupt() {
-  document.getElementById('vftInterrupted').classList.remove('active');
-  document.getElementById('vftScreen').classList.remove('active');
-  document.getElementById('activeEyeBadge').classList.remove('show');
-  document.getElementById('baselinePrompt').classList.add('show');
-  document.getElementById('vftStartBtn').classList.add('show');
-  document.getElementById('vftStartBtn').textContent = 'Retake Field Test';
 }
 
 function endVFT() {
