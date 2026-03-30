@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CenterGaze – Patient</title>
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
     --bg: #07080d;
@@ -17,7 +18,6 @@
     --mono: 'Space Mono', monospace;
     --sans: 'Syne', sans-serif;
   }
-  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
 
   body {
     background: var(--bg);
@@ -47,27 +47,9 @@
   #fixationScreen.active { display: flex; }
 
   /* Crosshair lines */
-  .crosshair {
-    position: fixed;
-    pointer-events: none;
-    z-index: 1;
-  }
-  .ch-h {
-    top: 50%;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: rgba(255,255,255,0.04);
-    transform: translateY(-50%);
-  }
-  .ch-v {
-    left: 50%;
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    background: rgba(255,255,255,0.04);
-    transform: translateX(-50%);
-  }
+  .crosshair { position: fixed; pointer-events: none; z-index: 1; }
+  .ch-h { top: 50%; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.04); transform: translateY(-50%); }
+  .ch-v { left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.04); transform: translateX(-50%); }
 
   /* Fixation target */
   .fixation-wrap {
@@ -105,10 +87,24 @@
   .fixation-dot.pulse {
     box-shadow: 0 0 0 8px rgba(255,58,92,0.6), 0 0 28px rgba(255,58,92,0.5);
   }
-  @keyframes breathe {
-    0%,100% { transform: scale(1); opacity: 0.5; }
-    50% { transform: scale(1.05); opacity: 0.8; }
+  @keyframes breathe { 0%,100%{transform:scale(1);opacity:0.5} 50%{transform:scale(1.05);opacity:0.8} }
+
+  /* Gaze Direction Arrow */
+  #gazeArrow {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 72px;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    text-shadow: 0 0 20px rgba(0,240,176,0.7);
+    color: var(--accent);
+    line-height: 1;
   }
+  #gazeArrow.show { opacity: 0.85; }
 
   .instruction {
     font-size: 12px;
@@ -128,37 +124,20 @@
     border: 1px solid rgba(255,255,255,0.07);
     border-radius: 10px;
   }
-  .init-title {
-    font-family: var(--sans);
-    font-size: 22px;
-    font-weight: 800;
-    color: #fff;
-    margin-bottom: 6px;
-  }
+  .init-title { font-family: var(--sans); font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 6px; }
   .init-title span { color: var(--accent); }
-  .init-sub {
-    font-size: 10px;
-    color: var(--muted);
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    margin-bottom: 28px;
-  }
+  .init-sub { font-size: 10px; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 28px; }
   .steps { display: flex; flex-direction: column; gap: 14px; }
   .step { display: flex; flex-direction: column; gap: 5px; }
   .step-hd { display: flex; align-items: center; gap: 9px; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
-  .ico {
-    width: 18px; height: 18px; border-radius: 50%;
-    border: 1.5px solid var(--muted); flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center; font-size: 9px;
-    transition: all 0.3s;
-  }
+  .ico { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--muted); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; transition: all 0.3s; }
   .ico.spin { border-color: var(--accent); border-top-color: transparent; animation: sp 0.7s linear infinite; }
-  .ico.ok   { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
-  .ico.err  { border-color: var(--danger);  background: rgba(255,58,92,0.12);  color: var(--danger); }
+  .ico.ok { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+  .ico.err { border-color: var(--danger); background: rgba(255,58,92,0.12); color: var(--danger); }
   @keyframes sp { to { transform: rotate(360deg); } }
   .slbl { color: var(--muted); transition: color 0.3s; font-size: 10px; letter-spacing: 1px; }
   .slbl.run { color: var(--text); }
-  .slbl.ok  { color: var(--accent); }
+  .slbl.ok { color: var(--accent); }
   .slbl.err { color: var(--danger); }
   .sbar { height: 2px; background: rgba(255,255,255,0.05); border-radius: 1px; overflow: hidden; margin-left: 27px; }
   .sfill { height: 100%; background: var(--accent); border-radius: 1px; width: 0%; transition: width 0.4s ease; }
@@ -166,95 +145,129 @@
   .sdetail { font-size: 9px; color: var(--muted); margin-left: 27px; min-height: 12px; }
 
   .start-btn {
-    margin-top: 28px;
-    width: 100%;
-    background: var(--accent-dim);
-    border: 1px solid rgba(0,240,176,0.4);
-    color: var(--accent);
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    padding: 14px;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background 0.2s;
+    margin-top: 28px; width: 100%;
+    background: var(--accent-dim); border: 1px solid rgba(0,240,176,0.4);
+    color: var(--accent); font-family: var(--mono); font-size: 11px;
+    letter-spacing: 2px; text-transform: uppercase; padding: 14px;
+    border-radius: 5px; cursor: pointer; transition: background 0.2s;
   }
   .start-btn:hover { background: rgba(0,240,176,0.2); }
   .start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .baseline-prompt {
-    position: fixed;
-    bottom: 40px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 10;
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
+    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+    z-index: 10; display: none; flex-direction: column; align-items: center; gap: 10px;
   }
   .baseline-prompt.show { display: flex; }
-
-  .baseline-bar-wrap {
-    width: 240px;
-    height: 3px;
-    background: rgba(255,255,255,0.08);
-    border-radius: 2px;
-    overflow: hidden;
-  }
+  .baseline-bar-wrap { width: 240px; height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; }
   #baselineProgress { height: 100%; background: var(--warn); width: 0%; transition: width 0.1s linear; }
-  .baseline-msg {
-    font-size: 10px;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: var(--warn);
-    text-align: center;
-  }
-
+  .baseline-msg { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--warn); text-align: center; }
   .baseline-action-btn {
-    background: rgba(255,184,48,0.12);
-    border: 1px solid rgba(255,184,48,0.4);
-    color: var(--warn);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    padding: 10px 24px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background 0.2s;
+    background: rgba(255,184,48,0.12); border: 1px solid rgba(255,184,48,0.4); color: var(--warn);
+    font-family: var(--mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+    padding: 10px 24px; border-radius: 4px; cursor: pointer; transition: background 0.2s;
   }
   .baseline-action-btn:hover { background: rgba(255,184,48,0.22); }
   .baseline-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* Connection status dot */
-  #connDot {
-    position: fixed;
-    top: 16px;
-    right: 18px;
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: var(--muted);
-    z-index: 20;
-    transition: all 0.3s;
-  }
+  /* Connection dot */
+  #connDot { position: fixed; top: 16px; right: 18px; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); z-index: 20; transition: all 0.3s; }
   #connDot.ok { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
   #connDot.err { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
 
-  /* Hidden video for processing */
+  /* Hidden video */
   #video { position: fixed; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
   #overlay { display: none; }
 
+  /* Camera canvas for streaming */
+  #camCanvas { display: none; }
+
   .err-box { display: none; margin-top: 14px; background: rgba(255,58,92,0.1); border: 1px solid var(--danger); border-radius: 4px; padding: 10px 12px; font-size: 10px; color: var(--danger); line-height: 1.9; }
   .err-box.show { display: block; }
+
+  /* ===== VISUAL FIELD TEST ===== */
+  #vftScreen {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 100;
+    cursor: none;
+  }
+  #vftScreen.active { display: block; }
+
+  /* VFT peripheral dots - rendered on canvas */
+  #vftCanvas { width: 100%; height: 100%; display: block; }
+
+  /* VFT UI overlay */
+  #vftUI {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 110;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .vft-instruction {
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.3);
+    text-align: center;
+  }
+  .vft-progress {
+    width: 200px;
+    height: 2px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  #vftProgressFill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; }
+
+  /* VFT start button (on fixation screen) */
+  #vftStartBtn {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    background: rgba(180,143,255,0.12);
+    border: 1px solid rgba(180,143,255,0.4);
+    color: #b48fff;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    z-index: 20;
+    display: none;
+    transition: background 0.2s;
+  }
+  #vftStartBtn:hover { background: rgba(180,143,255,0.22); }
+  #vftStartBtn.show { display: block; }
+
+  /* Space press flash */
+  #spaceFlash {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,240,176,0.08);
+    pointer-events: none;
+    z-index: 105;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+  #spaceFlash.flash { opacity: 1; }
 </style>
 </head>
 <body>
 
-<!-- Hidden video/canvas for face tracking -->
+<!-- Hidden elements -->
 <video id="video" autoplay muted playsinline></video>
 <canvas id="overlay"></canvas>
+<canvas id="camCanvas"></canvas>
 
 <!-- Connection indicator -->
 <div id="connDot" title="Doctor connection"></div>
@@ -273,7 +286,7 @@
   <button class="start-btn" id="startBtn" onclick="boot()">Start Session</button>
 </div>
 
-<!-- Fixation screen (shown during tracking) -->
+<!-- Fixation screen -->
 <div id="fixationScreen">
   <div class="crosshair ch-h"></div>
   <div class="crosshair ch-v"></div>
@@ -285,23 +298,38 @@
   <div class="instruction">Keep your gaze on the red dot</div>
 </div>
 
-<!-- Baseline capture prompt (shown at bottom when ready) -->
+<!-- Gaze direction arrow overlay -->
+<div id="gazeArrow">↑</div>
+
+<!-- VFT Start button (shown on fixation screen after baseline) -->
+<button id="vftStartBtn" onclick="startVFT()">Start Field Test</button>
+
+<!-- Baseline prompt -->
 <div class="baseline-prompt" id="baselinePrompt">
   <div class="baseline-msg" id="baselineMsg">Look at the dot — click when ready</div>
   <div class="baseline-bar-wrap"><div id="baselineProgress"></div></div>
   <button class="baseline-action-btn" id="baselineBtn" onclick="startBaselineCreation()">Create Baseline</button>
 </div>
 
+<!-- Visual Field Test Screen -->
+<div id="vftScreen">
+  <canvas id="vftCanvas"></canvas>
+  <div id="spaceFlash"></div>
+  <div id="vftUI">
+    <div class="vft-instruction">Focus on the red dot · Press SPACE if you see a flash</div>
+    <div class="vft-progress"><div id="vftProgressFill"></div></div>
+  </div>
+</div>
+
 <script>
-// ===== CENTERGAZE PATIENT APP =====
-// - Shows ONLY the fixation dot
-// - Runs MediaPipe face tracking invisibly in background
-// - Sends gaze data to doctor via WebSocket
+// ===== CENTERGAZE PATIENT APP (ENHANCED) =====
 
 let faceMeshInstance = null, running = false;
 const video = document.getElementById('video');
 const cvs = document.getElementById('overlay');
 const ctx = cvs.getContext('2d');
+const camCanvas = document.getElementById('camCanvas');
+const camCtx = camCanvas.getContext('2d');
 
 // Tracking state
 let baseline = null, baselineComplete = false;
@@ -309,7 +337,6 @@ let baselineStartTime = null, baselineSamples = [];
 let alertThresholdDeg = 10;
 let awayStart = null, lastState = null;
 let sessionStart = null, centerMs = 0, offMs = 0, lastTick = null, alerts = 0;
-let tlHistory = [];
 let currentDeviation = 0;
 
 // Smoothing
@@ -317,6 +344,10 @@ const EMA_ALPHA = 0.25;
 let smoothedIL = null, smoothedIR = null, smoothedILv = null, smoothedIRv = null;
 const MIN_FACE_WIDTH_RATIO = 0.18, MAX_FACE_WIDTH_RATIO = 0.42;
 const IRIS_RATIO_TO_DEGREES = 83;
+
+// Gaze direction state
+let lastGazeDir = null;
+let gazeHideTimer = null;
 
 // ===== WebSocket =====
 let ws = null;
@@ -329,11 +360,13 @@ function connectWS() {
   ws.onopen = () => {
     wsConnected = true;
     document.getElementById('connDot').className = 'ok';
+    // Send screen metrics on connect
+    sendScreenMetrics();
   };
   ws.onclose = () => {
     wsConnected = false;
     document.getElementById('connDot').className = 'err';
-    setTimeout(connectWS, 3000); // auto-reconnect
+    setTimeout(connectWS, 3000);
   };
   ws.onerror = () => {
     wsConnected = false;
@@ -348,7 +381,34 @@ function sendGazeData(payload) {
   }
 }
 
-// ===== Iris math (same as original) =====
+function sendScreenMetrics() {
+  const dpi = window.devicePixelRatio || 1;
+  sendGazeData({
+    type: 'screen_metrics',
+    screenW: window.screen.width,
+    screenH: window.screen.height,
+    innerW: window.innerWidth,
+    innerH: window.innerHeight,
+    dpr: dpi,
+    ts: Date.now()
+  });
+}
+
+// Send camera frame to doctor
+let camStreamInterval = null;
+function startCameraStream() {
+  if (camStreamInterval) clearInterval(camStreamInterval);
+  camCanvas.width = 320;
+  camCanvas.height = 240;
+  camStreamInterval = setInterval(() => {
+    if (!wsConnected || video.readyState < 2) return;
+    camCtx.drawImage(video, 0, 0, 320, 240);
+    const dataUrl = camCanvas.toDataURL('image/jpeg', 0.4);
+    sendGazeData({ type: 'cam_frame', frame: dataUrl, ts: Date.now() });
+  }, 150); // ~6-7 fps
+}
+
+// ===== Iris math =====
 function irisRatio(lm, outer, inner, iris) {
   const minX = Math.min(lm[outer].x, lm[inner].x);
   const maxX = Math.max(lm[outer].x, lm[inner].x);
@@ -385,6 +445,60 @@ function calculateDeviation(iL, iR, yaw, pitch, iLv, iRv) {
   return dev;
 }
 
+// ===== Gaze Direction Arrow =====
+const ARROWS = {
+  'center': null,
+  'right': '→',
+  'left': '←',
+  'up': '↑',
+  'down': '↓',
+  'up-right': '↗',
+  'up-left': '↖',
+  'down-right': '↘',
+  'down-left': '↙',
+};
+
+function getGazeDirection(iL, iR, iLv, iRv) {
+  if (!baseline || !baselineComplete) return 'center';
+  const HORIZ_THRESH = 0.03;
+  const VERT_THRESH = 0.025;
+
+  const horizDev = ((iL - baseline.iL) + (iR - baseline.iR)) / 2;
+  const vertDev = ((iLv - baseline.iLv) + (iRv - baseline.iRv)) / 2;
+
+  const goRight = horizDev > HORIZ_THRESH;
+  const goLeft = horizDev < -HORIZ_THRESH;
+  const goDown = vertDev > VERT_THRESH;
+  const goUp = vertDev < -VERT_THRESH;
+
+  if (goRight && goUp) return 'up-right';
+  if (goRight && goDown) return 'down-right';
+  if (goLeft && goUp) return 'up-left';
+  if (goLeft && goDown) return 'down-left';
+  if (goRight) return 'right';
+  if (goLeft) return 'left';
+  if (goUp) return 'up';
+  if (goDown) return 'down';
+  return 'center';
+}
+
+function updateGazeArrow(dir) {
+  const arrowEl = document.getElementById('gazeArrow');
+  if (dir === 'center') {
+    arrowEl.classList.remove('show');
+  } else {
+    const sym = ARROWS[dir];
+    if (sym && dir !== lastGazeDir) {
+      arrowEl.textContent = sym;
+    }
+    arrowEl.classList.add('show');
+    if (gazeHideTimer) clearTimeout(gazeHideTimer);
+    gazeHideTimer = setTimeout(() => arrowEl.classList.remove('show'), 800);
+  }
+  lastGazeDir = dir;
+}
+
+// ===== Baseline =====
 function collectBaseline(iL, iR, yaw, pitch, fw, iLv, iRv) {
   if (baselineComplete || !baselineStartTime) return;
   const elapsed = (Date.now() - baselineStartTime) / 1000;
@@ -413,6 +527,8 @@ function collectBaseline(iL, iR, yaw, pitch, fw, iLv, iRv) {
     document.getElementById('baselineProgress').style.background = 'var(--accent)';
     if (!sessionStart) { sessionStart = Date.now(); setInterval(updateStats, 1000); }
     sendGazeData({ type: 'baseline_created', ts: Date.now() });
+    // Show VFT button
+    document.getElementById('vftStartBtn').classList.add('show');
   }
 }
 
@@ -431,7 +547,19 @@ function startBaselineCreation() {
   sendGazeData({ type: 'baseline_start', ts: Date.now() });
 }
 
-// Main tracking loop
+// ===== Compute face-to-screen distance in cm =====
+function estimateDistanceCm(lm) {
+  const fw = getFaceWidth(lm); // normalized 0-1 across screen width
+  const screenWidthPx = window.innerWidth;
+  const faceWidthPx = fw * screenWidthPx;
+  // Average face width ~14cm, focal length approximation
+  const KNOWN_FACE_WIDTH_CM = 14;
+  const FOCAL_PX = 600; // rough estimate for typical webcam
+  if (faceWidthPx < 10) return null;
+  return Math.round((KNOWN_FACE_WIDTH_CM * FOCAL_PX) / faceWidthPx);
+}
+
+// ===== Main tracking loop =====
 async function loop() {
   if (!running) return;
   cvs.width = video.videoWidth || 640;
@@ -469,6 +597,7 @@ async function loop() {
       const pitch = fh > 0.001 ? ((ny - fy) / fh - 0.42) * 90 : 0;
       const faceWidthRatio = getFaceWidth(lm);
       const distanceStatus = calcFaceDistance(lm);
+      const distanceCm = estimateDistanceCm(lm);
 
       if (baselineStartTime && !baselineComplete) {
         collectBaseline(smoothedIL, smoothedIR, yaw, pitch, faceWidthRatio, smoothedILv, smoothedIRv);
@@ -479,6 +608,10 @@ async function loop() {
       if (baselineComplete) {
         deviation = calculateDeviation(smoothedIL, smoothedIR, yaw, pitch, smoothedILv, smoothedIRv);
         currentDeviation = deviation;
+
+        // Update gaze direction arrow
+        const dir = getGazeDirection(smoothedIL, smoothedIR, smoothedILv, smoothedIRv);
+        updateGazeArrow(dir);
 
         const iT = 0.12, yT = 12, pT = 10;
         const iLdev = Math.abs(smoothedIL - baseline.iL);
@@ -498,7 +631,6 @@ async function loop() {
           if (!awayStart) awayStart = now;
           if (now - awayStart >= 50 && lastState !== 'o') {
             lastState = 'o'; alerts++;
-            // Flash the fixation dot
             document.getElementById('fixationDot').classList.add('pulse');
             setTimeout(() => document.getElementById('fixationDot').classList.remove('pulse'), 300);
           }
@@ -510,16 +642,17 @@ async function loop() {
         }
         state = lastState;
 
-        // Build metrics payload for doctor
         const tot = sessionStart ? Date.now() - sessionStart : 0;
         sendGazeData({
           type: 'gaze',
           ts: Date.now(),
           deviation: +deviation.toFixed(2),
           state,
+          gazeDir: getGazeDirection(smoothedIL, smoothedIR, smoothedILv, smoothedIRv),
           confidence: +confidence.toFixed(3),
           threshold: alertThresholdDeg,
           distanceStatus,
+          distanceCm,
           iLdev: +iLdev.toFixed(4),
           iRdev: +iRdev.toFixed(4),
           iVdev: +iVdev.toFixed(4),
@@ -537,7 +670,7 @@ async function loop() {
           type: 'gaze',
           ts: Date.now(),
           deviation: 0, state: null, confidence: 0,
-          distanceStatus, baselineComplete: false, facePresent: true,
+          distanceStatus, distanceCm, baselineComplete: false, facePresent: true,
           threshold: alertThresholdDeg
         });
       }
@@ -555,7 +688,269 @@ async function loop() {
   requestAnimationFrame(loop);
 }
 
-// Helpers
+// ===== VISUAL FIELD TEST =====
+const VFT_TOTAL_TRIALS = 40;
+const VFT_STIM_DURATION = 200; // ms
+const VFT_ISI = [800, 1400]; // inter-stimulus interval range
+// 4 corner positions (relative to center as fraction of viewport)
+const VFT_POSITIONS = [
+  { id: 'TL', label: 'Top-Left',     dx: -0.28, dy: -0.28 },
+  { id: 'TR', label: 'Top-Right',    dx:  0.28, dy: -0.28 },
+  { id: 'BL', label: 'Bottom-Left',  dx: -0.28, dy:  0.28 },
+  { id: 'BR', label: 'Bottom-Right', dx:  0.28, dy:  0.28 },
+];
+
+let vftRunning = false;
+let vftTrials = []; // { posId, luminance, responded, rt }
+let vftCurrentTrial = null;
+let vftTrialIndex = 0;
+let vftStimTimer = null;
+let vftIsiTimer = null;
+let vftCanvas, vftCtx2;
+let vftStimVisible = false;
+
+// Per-position threshold state (QUEST-lite: binary search)
+let vftState = {}; // posId -> { lo, hi, responses: [{lum, hit}] }
+
+function initVFTState() {
+  VFT_POSITIONS.forEach(p => {
+    vftState[p.id] = { lo: 0, hi: 255, responses: [] };
+  });
+}
+
+function getNextLuminance(posId) {
+  const s = vftState[posId];
+  // Binary midpoint
+  return Math.round((s.lo + s.hi) / 2);
+}
+
+function recordVFTResponse(posId, luminance, hit) {
+  const s = vftState[posId];
+  s.responses.push({ luminance, hit });
+  if (hit) {
+    s.hi = luminance; // threshold is at or below this
+  } else {
+    s.lo = luminance; // threshold is above this
+  }
+}
+
+function getThresholdEstimate(posId) {
+  const s = vftState[posId];
+  if (s.responses.length === 0) return null;
+  // Weighted midpoint of last few reversals
+  const hits = s.responses.filter(r => r.hit).map(r => r.luminance);
+  const misses = s.responses.filter(r => !r.hit).map(r => r.luminance);
+  if (hits.length === 0) return 255;
+  if (misses.length === 0) return 0;
+  const minHit = Math.min(...hits);
+  const maxMiss = Math.max(...misses);
+  return Math.round((minHit + maxMiss) / 2);
+}
+
+function buildVFTTrialSequence() {
+  const trials = [];
+  // Interleave positions, ~10 per position
+  for (let i = 0; i < VFT_TOTAL_TRIALS; i++) {
+    const pos = VFT_POSITIONS[i % VFT_POSITIONS.length];
+    trials.push({ posId: pos.id, luminance: null, responded: false, rt: null, stimStart: null });
+  }
+  // Shuffle
+  for (let i = trials.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [trials[i], trials[j]] = [trials[j], trials[i]];
+  }
+  return trials;
+}
+
+function startVFT() {
+  if (vftRunning) return;
+  vftRunning = true;
+  document.getElementById('vftStartBtn').classList.remove('show');
+  document.getElementById('vftScreen').classList.add('active');
+  document.getElementById('baselinePrompt').classList.remove('show');
+
+  vftCanvas = document.getElementById('vftCanvas');
+  vftCtx2 = vftCanvas.getContext('2d');
+  resizeVFTCanvas();
+
+  initVFTState();
+  vftTrials = buildVFTTrialSequence();
+  vftTrialIndex = 0;
+
+  sendGazeData({ type: 'vft_start', ts: Date.now(), totalTrials: VFT_TOTAL_TRIALS });
+
+  // Draw fixation cross
+  drawVFTScene(null, 0);
+
+  // Spacebar listener
+  document.addEventListener('keydown', onVFTKey);
+
+  scheduleNextVFTTrial();
+}
+
+function resizeVFTCanvas() {
+  vftCanvas.width = window.innerWidth;
+  vftCanvas.height = window.innerHeight;
+}
+
+function drawVFTScene(stimPos, luminance) {
+  const W = vftCanvas.width, H = vftCanvas.height;
+  vftCtx2.fillStyle = '#000';
+  vftCtx2.fillRect(0, 0, W, H);
+
+  // Center fixation dot
+  const cx = W / 2, cy = H / 2;
+  vftCtx2.beginPath();
+  vftCtx2.arc(cx, cy, 8, 0, Math.PI * 2);
+  vftCtx2.fillStyle = '#ff3a5c';
+  vftCtx2.fill();
+  vftCtx2.beginPath();
+  vftCtx2.arc(cx, cy, 16, 0, Math.PI * 2);
+  vftCtx2.strokeStyle = 'rgba(255,58,92,0.3)';
+  vftCtx2.lineWidth = 1.5;
+  vftCtx2.stroke();
+
+  // Peripheral stimulus
+  if (stimPos && luminance > 0) {
+    const pos = VFT_POSITIONS.find(p => p.id === stimPos);
+    if (pos) {
+      const sx = cx + pos.dx * W;
+      const sy = cy + pos.dy * H;
+      const c = luminance;
+      vftCtx2.beginPath();
+      vftCtx2.arc(sx, sy, 14, 0, Math.PI * 2);
+      vftCtx2.fillStyle = `rgb(${c},${c},${c})`;
+      vftCtx2.fill();
+    }
+  }
+}
+
+function scheduleNextVFTTrial() {
+  if (vftTrialIndex >= vftTrials.length) {
+    endVFT();
+    return;
+  }
+  const isi = VFT_ISI[0] + Math.random() * (VFT_ISI[1] - VFT_ISI[0]);
+  vftIsiTimer = setTimeout(runVFTTrial, isi);
+}
+
+function runVFTTrial() {
+  const trial = vftTrials[vftTrialIndex];
+  const lum = getNextLuminance(trial.posId);
+  trial.luminance = lum;
+  trial.stimStart = Date.now();
+  vftStimVisible = true;
+  vftCurrentTrial = trial;
+
+  drawVFTScene(trial.posId, lum);
+
+  // Update progress
+  document.getElementById('vftProgressFill').style.width = ((vftTrialIndex / VFT_TOTAL_TRIALS) * 100) + '%';
+
+  sendGazeData({
+    type: 'vft_stim',
+    trialIndex: vftTrialIndex,
+    posId: trial.posId,
+    luminance: lum,
+    ts: Date.now()
+  });
+
+  vftStimTimer = setTimeout(() => {
+    // Stimulus ends — no response recorded yet
+    vftStimVisible = false;
+    drawVFTScene(null, 0);
+    // Give 300ms grace window after stim
+    setTimeout(() => {
+      if (!trial.responded) {
+        // Miss
+        recordVFTResponse(trial.posId, lum, false);
+        sendVFTTrialResult(trial, false);
+        vftTrialIndex++;
+        scheduleNextVFTTrial();
+      }
+    }, 300);
+  }, VFT_STIM_DURATION);
+}
+
+function onVFTKey(e) {
+  if (e.code !== 'Space') return;
+  e.preventDefault();
+
+  // Flash feedback
+  const flash = document.getElementById('spaceFlash');
+  flash.classList.add('flash');
+  setTimeout(() => flash.classList.remove('flash'), 100);
+
+  if (vftCurrentTrial && !vftCurrentTrial.responded && (vftStimVisible || Date.now() - vftCurrentTrial.stimStart < VFT_STIM_DURATION + 300)) {
+    const rt = Date.now() - vftCurrentTrial.stimStart;
+    vftCurrentTrial.responded = true;
+    vftCurrentTrial.rt = rt;
+    recordVFTResponse(vftCurrentTrial.posId, vftCurrentTrial.luminance, true);
+    sendVFTTrialResult(vftCurrentTrial, true);
+    clearTimeout(vftStimTimer);
+    vftStimVisible = false;
+    drawVFTScene(null, 0);
+    vftTrialIndex++;
+    scheduleNextVFTTrial();
+  }
+}
+
+function sendVFTTrialResult(trial, hit) {
+  // Compute current threshold estimates
+  const thresholds = {};
+  VFT_POSITIONS.forEach(p => {
+    thresholds[p.id] = getThresholdEstimate(p.id);
+  });
+  sendGazeData({
+    type: 'vft_response',
+    trialIndex: vftTrialIndex,
+    posId: trial.posId,
+    luminance: trial.luminance,
+    hit,
+    rt: trial.rt,
+    thresholds,
+    ts: Date.now()
+  });
+}
+
+function endVFT() {
+  vftRunning = false;
+  document.removeEventListener('keydown', onVFTKey);
+
+  // Final thresholds
+  const finalThresholds = {};
+  VFT_POSITIONS.forEach(p => {
+    finalThresholds[p.id] = getThresholdEstimate(p.id);
+  });
+
+  sendGazeData({
+    type: 'vft_complete',
+    thresholds: finalThresholds,
+    trials: vftTrials,
+    ts: Date.now()
+  });
+
+  // Show completion for 3s then return
+  const W = vftCanvas.width, H = vftCanvas.height;
+  vftCtx2.fillStyle = '#000';
+  vftCtx2.fillRect(0, 0, W, H);
+  vftCtx2.fillStyle = '#00f0b0';
+  vftCtx2.font = 'bold 18px Space Mono, monospace';
+  vftCtx2.textAlign = 'center';
+  vftCtx2.fillText('Field Test Complete', W/2, H/2 - 20);
+  vftCtx2.fillStyle = 'rgba(255,255,255,0.4)';
+  vftCtx2.font = '12px Space Mono, monospace';
+  vftCtx2.fillText('Results sent to doctor', W/2, H/2 + 16);
+
+  setTimeout(() => {
+    document.getElementById('vftScreen').classList.remove('active');
+    document.getElementById('baselinePrompt').classList.add('show');
+    document.getElementById('vftStartBtn').classList.add('show');
+    document.getElementById('vftStartBtn').textContent = 'Repeat Field Test';
+  }, 3000);
+}
+
+// ===== Helpers =====
 function stepOk(n, msg) { document.getElementById('i'+n).className='ico ok'; document.getElementById('i'+n).textContent='✓'; document.getElementById('l'+n).className='slbl ok'; document.getElementById('d'+n).textContent=msg; document.getElementById('p'+n).style.width='100%'; }
 function stepErr(n, msg) { document.getElementById('i'+n).className='ico err'; document.getElementById('i'+n).textContent='✕'; document.getElementById('l'+n).className='slbl err'; document.getElementById('d'+n).textContent=msg; document.getElementById('p'+n).className='sfill err'; document.getElementById('p'+n).style.width='100%'; }
 function stepRun(n, msg) { document.getElementById('i'+n).className='ico spin'; document.getElementById('l'+n).className='slbl run'; document.getElementById('d'+n).textContent=msg; document.getElementById('p'+n).style.width='35%'; }
@@ -605,8 +1000,15 @@ async function boot() {
   document.getElementById('baselinePrompt').classList.add('show');
   running = true;
   sendGazeData({ type: 'session_start', ts: Date.now() });
+  sendScreenMetrics();
+  startCameraStream();
   requestAnimationFrame(loop);
 }
+
+window.addEventListener('resize', () => {
+  if (vftRunning && vftCanvas) resizeVFTCanvas();
+  sendScreenMetrics();
+});
 </script>
 </body>
 </html>

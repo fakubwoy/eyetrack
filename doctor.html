@@ -19,6 +19,8 @@
     --danger-dim: rgba(255,58,92,0.12);
     --warn: #ffb830;
     --warn-dim: rgba(255,184,48,0.12);
+    --purple: #b48fff;
+    --purple-dim: rgba(180,143,255,0.10);
     --text: #dde0f0;
     --muted: #555a78;
     --mono: 'Space Mono', monospace;
@@ -37,10 +39,11 @@
   }
 
   header {
-    width: 100%; max-width: 980px;
+    width: 100%; max-width: 1100px;
     display: flex; align-items: center; gap: 14px;
     margin-bottom: 20px;
     border-bottom: 1px solid var(--border); padding-bottom: 14px;
+    flex-wrap: wrap;
   }
   .logo { font-family: var(--sans); font-size: 20px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
   .logo span { color: var(--accent); }
@@ -50,50 +53,38 @@
     padding: 3px 8px; border-radius: 2px; background: var(--accent-dim);
   }
   .badge.gray { color: var(--muted); border-color: rgba(255,255,255,0.1); background: transparent; }
-  .badge.doctor { color: #b48fff; border-color: rgba(180,143,255,0.35); background: rgba(180,143,255,0.08); }
+  .badge.doctor { color: var(--purple); border-color: rgba(180,143,255,0.35); background: var(--purple-dim); }
   .ml-auto { margin-left: auto; }
 
-  /* Connection status */
   #connStatus {
     display: flex; align-items: center; gap: 8px;
     font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
     color: var(--muted);
   }
-  .conn-dot {
-    width: 8px; height: 8px; border-radius: 50%; background: var(--muted);
-    transition: all 0.3s;
-  }
+  .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: all 0.3s; }
   .conn-dot.connected { background: var(--accent); box-shadow: 0 0 7px var(--accent); }
   .conn-dot.patient-online { background: #00e0ff; box-shadow: 0 0 7px #00e0ff; }
   .conn-dot.error { background: var(--danger); box-shadow: 0 0 7px var(--danger); animation: blink 0.7s ease-in-out infinite; }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
 
-  /* Waiting overlay */
   #waitOverlay {
-    width: 100%; max-width: 980px;
+    width: 100%; max-width: 1100px;
     display: flex; align-items: center; justify-content: center;
     min-height: 320px;
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
     flex-direction: column; gap: 18px;
   }
   #waitOverlay.hidden { display: none; }
-  .wait-spinner {
-    width: 44px; height: 44px; border-radius: 50%;
-    border: 2px solid rgba(255,255,255,0.06);
-    border-top-color: var(--accent);
-    animation: spin 1s linear infinite;
-  }
+  .wait-spinner { width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.06); border-top-color: var(--accent); animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .wait-msg { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
 
   /* Main layout */
   .main-grid {
-    width: 100%; max-width: 980px;
-    display: grid; grid-template-columns: 1fr 310px; gap: 14px;
+    width: 100%; max-width: 1100px;
+    display: grid; grid-template-columns: 1fr 340px; gap: 14px;
   }
   .main-grid.hidden { display: none; }
-
-  /* Big state panel left */
   .left-col { display: flex; flex-direction: column; gap: 14px; }
 
   /* Hero state card */
@@ -126,7 +117,7 @@
   .hero-sub {
     font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
     color: var(--muted); padding-top: 6px; border-top: 1px solid var(--border);
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   }
   .hero-sub .pill {
     background: var(--surface2); border-radius: 3px; padding: 3px 10px;
@@ -135,17 +126,83 @@
   .hero-sub .pill.ok { color: var(--accent); }
   .hero-sub .pill.warn { color: var(--warn); }
   .hero-sub .pill.bad { color: var(--danger); }
+  .hero-sub .pill.purple { color: var(--purple); }
 
-  /* Confidence bar */
   .conf-bar-wrap { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-top: 6px; }
   .conf-bar-fill { height: 100%; background: var(--danger); border-radius: 2px; transition: width 0.15s ease, background 0.3s; width: 0%; }
   .conf-bar-fill.mid { background: var(--warn); }
   .conf-bar-fill.hi { background: var(--accent); }
 
-  /* Timeline */
-  .tl-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px;
+  /* ===== LIVE CAMERA FEED ===== */
+  .cam-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px;
+    display: flex; flex-direction: column; gap: 10px;
   }
+  .cam-wrap {
+    position: relative;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #000;
+    aspect-ratio: 4/3;
+  }
+  #camFeed {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    border-radius: 6px;
+  }
+  .cam-overlay-info {
+    position: absolute;
+    bottom: 8px; left: 8px;
+    display: flex; gap: 6px; align-items: center;
+    background: rgba(0,0,0,0.7);
+    padding: 4px 8px;
+    border-radius: 4px;
+    backdrop-filter: blur(4px);
+  }
+  .cam-rec-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--danger);
+    animation: blink 1.2s ease-in-out infinite;
+  }
+  .cam-rec-label { font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.7); }
+
+  /* Gaze direction display */
+  .gaze-dir-block {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .gaze-arrow-big {
+    font-size: 42px;
+    line-height: 1;
+    transition: all 0.15s ease;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(0,240,176,0.5);
+    min-width: 52px;
+    text-align: center;
+  }
+  .gaze-arrow-big.center { color: var(--muted); text-shadow: none; font-size: 28px; }
+  .gaze-dir-info { display: flex; flex-direction: column; gap: 4px; }
+  .gaze-dir-label { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+  .gaze-dir-value { font-family: var(--sans); font-size: 18px; font-weight: 700; color: var(--text); }
+
+  /* Screen + distance metrics row */
+  .metrics-row {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+  }
+  .metric-box {
+    background: var(--surface2); border-radius: 5px; padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .metric-num { font-family: var(--sans); font-size: 18px; font-weight: 700; color: var(--text); line-height: 1; }
+  .metric-num.accent { color: var(--accent); }
+  .metric-num.warn { color: var(--warn); }
+  .metric-num.danger { color: var(--danger); }
+  .metric-lbl { font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
+
+  /* Timeline */
+  .tl-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
   .plbl {
     font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
     color: var(--muted); margin-bottom: 10px;
@@ -158,11 +215,8 @@
   .tseg.o { background: var(--danger); opacity: 0.6; }
 
   /* Alert feed */
-  .alert-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    padding: 14px; flex: 1;
-  }
-  .alert-feed { font-size: 10px; line-height: 1.9; color: var(--muted); max-height: 180px; overflow-y: auto; }
+  .alert-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; flex: 1; }
+  .alert-feed { font-size: 10px; line-height: 1.9; color: var(--muted); max-height: 160px; overflow-y: auto; }
   .alert-feed::-webkit-scrollbar { width: 2px; }
   .alert-feed::-webkit-scrollbar-thumb { background: var(--border); }
   .arow { display: flex; gap: 8px; }
@@ -171,18 +225,17 @@
   .arow.c .am { color: var(--accent); }
   .arow.l .am { color: var(--warn); }
   .arow.i .am { color: var(--text); }
+  .arow.p .am { color: var(--purple); }
 
   /* Sidebar */
   .sidebar { display: flex; flex-direction: column; gap: 12px; }
   .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
 
-  /* Stats grid */
   .sgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .sbox { background: var(--surface2); border-radius: 4px; padding: 10px 10px 8px; }
   .snum { font-family: var(--sans); font-size: 22px; font-weight: 700; color: var(--text); line-height: 1; }
   .slbl2 { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
 
-  /* Metric rows */
   .mrow { display: flex; flex-direction: column; gap: 4px; margin-bottom: 9px; }
   .mhd { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
   .mval { color: var(--text); font-weight: 600; }
@@ -191,17 +244,97 @@
   .bfill.w { background: var(--warn); }
   .bfill.b { background: var(--danger); }
 
-  /* Alert threshold control */
+  /* ===== VISUAL FIELD TEST PANEL ===== */
+  .vft-panel {
+    background: var(--surface);
+    border: 1px solid rgba(180,143,255,0.2);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .vft-status-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 12px;
+  }
+  .vft-status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted); flex-shrink: 0;
+    transition: all 0.3s;
+  }
+  .vft-status-dot.running {
+    background: var(--purple);
+    box-shadow: 0 0 6px var(--purple);
+    animation: blink 1.2s ease-in-out infinite;
+  }
+  .vft-status-dot.done { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .vft-status-label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text); }
+  .vft-status-sub { font-size: 9px; color: var(--muted); margin-left: auto; }
+
+  /* VFT corner map */
+  .vft-map-wrap {
+    display: flex; align-items: center; justify-content: center;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+  .vft-map {
+    position: relative;
+    width: 120px; height: 120px;
+    background: var(--surface2);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .vft-corner {
+    position: absolute;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    color: var(--muted);
+    transition: all 0.4s;
+  }
+  .vft-corner[data-pos="TL"] { top: 8px; left: 8px; }
+  .vft-corner[data-pos="TR"] { top: 8px; right: 8px; }
+  .vft-corner[data-pos="BL"] { bottom: 8px; left: 8px; }
+  .vft-corner[data-pos="BR"] { bottom: 8px; right: 8px; }
+  .vft-center-dot {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #ff3a5c;
+    box-shadow: 0 0 6px rgba(255,58,92,0.5);
+  }
+  .vft-corner.active {
+    border-color: var(--purple);
+    background: var(--purple-dim);
+    color: var(--purple);
+    box-shadow: 0 0 8px rgba(180,143,255,0.3);
+  }
+  .vft-corner.hit { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+  .vft-corner.miss { border-color: var(--danger); background: var(--danger-dim); color: var(--danger); }
+
+  /* VFT threshold bars */
+  .vft-thresholds { display: flex; flex-direction: column; gap: 7px; }
+  .vft-thresh-row { display: flex; flex-direction: column; gap: 3px; }
+  .vft-thresh-hd { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); }
+  .vft-thresh-val { color: var(--purple); font-weight: 600; }
+  .vft-thresh-track { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+  .vft-thresh-fill { height: 100%; border-radius: 2px; background: var(--purple); transition: width 0.4s ease; width: 0%; }
+  .vft-thresh-fill.hi { background: var(--accent); }
+  .vft-thresh-fill.mid { background: var(--warn); }
+  .vft-thresh-fill.lo { background: var(--danger); }
+
+  .vft-progress-wrap { height: 2px; background: var(--surface2); border-radius: 1px; overflow: hidden; margin-top: 4px; }
+  #vftProgressFill2 { height: 100%; background: var(--purple); width: 0%; transition: width 0.3s; }
+
+  /* Threshold control */
   .srow { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
   .shd { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
   .shd .thresh-val { color: var(--text); font-weight: 600; }
   input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
 
-  /* Patient status row */
-  .patient-status-row {
-    display: flex; align-items: center; gap: 8px; padding: 9px 11px;
-    background: var(--surface2); border-radius: 4px; margin-bottom: 4px;
-  }
+  .patient-status-row { display: flex; align-items: center; gap: 8px; padding: 9px 11px; background: var(--surface2); border-radius: 4px; margin-bottom: 4px; }
   .ps-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: all 0.3s; }
   .ps-dot.active { background: #00e0ff; box-shadow: 0 0 6px #00e0ff; animation: blink 1.8s ease-in-out infinite; }
   .ps-dot.baseline { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
@@ -209,10 +342,8 @@
   .ps-label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text); }
   .ps-sub { font-size: 9px; color: var(--muted); margin-left: auto; }
 
-  /* Score ring */
   #scoreRing { display: block; margin: 10px auto 4px; }
 
-  /* No-face warning */
   #noFaceWarn {
     display: none; position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
     background: rgba(255,184,48,0.18); border: 1px solid rgba(255,184,48,0.5);
@@ -230,7 +361,7 @@
   }
   button.sec:hover { background: var(--surface2); }
 
-  @media(max-width:680px){ .main-grid{ grid-template-columns:1fr; } }
+  @media(max-width:720px) { .main-grid { grid-template-columns:1fr; } .metrics-row { grid-template-columns: 1fr 1fr; } }
 </style>
 </head>
 <body>
@@ -245,17 +376,14 @@
   </div>
 </header>
 
-<!-- No-face warning -->
 <div id="noFaceWarn">[!] Patient face not detected</div>
 
-<!-- Waiting for patient -->
 <div id="waitOverlay">
   <div class="wait-spinner"></div>
   <div class="wait-msg">Waiting for patient to connect...</div>
   <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">Share <strong style="color:var(--text)">patient URL</strong> with the patient</div>
 </div>
 
-<!-- Main dashboard (hidden until patient sends data) -->
 <div class="main-grid hidden" id="mainGrid">
   <div class="left-col">
 
@@ -279,9 +407,49 @@
       </div>
       <div class="hero-sub">
         <span id="distPill" class="pill">Distance: —</span>
+        <span id="distCmPill" class="pill purple">~— cm</span>
         <span id="facePill" class="pill">Face: —</span>
         <span id="threshPill" class="pill">Threshold: 10°</span>
         <span id="baselinePill" class="pill warn">No baseline</span>
+        <span id="gazeDirPill" class="pill">Gaze: —</span>
+      </div>
+    </div>
+
+    <!-- Gaze direction + screen metrics -->
+    <div class="cam-card">
+      <div class="plbl">Patient Info</div>
+      <div class="gaze-dir-block">
+        <div class="gaze-arrow-big center" id="gazeDirArrow">●</div>
+        <div class="gaze-dir-info">
+          <div class="gaze-dir-label">Eye Direction</div>
+          <div class="gaze-dir-value" id="gazeDirText">Center</div>
+        </div>
+      </div>
+      <div class="metrics-row" style="margin-top:10px;">
+        <div class="metric-box">
+          <div class="metric-num accent" id="mScreenW">—</div>
+          <div class="metric-lbl">Screen W (px)</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-num accent" id="mScreenH">—</div>
+          <div class="metric-lbl">Screen H (px)</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-num" id="mDistCm">—</div>
+          <div class="metric-lbl">Est. Distance</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Camera Feed -->
+    <div class="cam-card">
+      <div class="plbl">Live Camera Feed</div>
+      <div class="cam-wrap">
+        <img id="camFeed" src="" alt="Patient camera feed" style="opacity:0;transition:opacity 0.3s;">
+        <div class="cam-overlay-info">
+          <div class="cam-rec-dot"></div>
+          <div class="cam-rec-label">Live</div>
+        </div>
       </div>
     </div>
 
@@ -335,6 +503,50 @@
       <div class="mrow"><div class="mhd"><span>Head pitch delta</span><span class="mval" id="vPitch">—</span></div><div class="btrack"><div class="bfill" id="bPitch"></div></div></div>
     </div>
 
+    <!-- ===== VISUAL FIELD TEST PANEL ===== -->
+    <div class="vft-panel">
+      <div class="plbl">Visual Field Test</div>
+      <div class="vft-status-row">
+        <div class="vft-status-dot" id="vftDot"></div>
+        <div class="vft-status-label" id="vftStatusLabel">Awaiting test</div>
+        <div class="vft-status-sub" id="vftStatusSub">—</div>
+      </div>
+
+      <!-- Corner map -->
+      <div class="vft-map-wrap">
+        <div class="vft-map" id="vftMap">
+          <div class="vft-center-dot"></div>
+          <div class="vft-corner" data-pos="TL" id="vftCornerTL">TL</div>
+          <div class="vft-corner" data-pos="TR" id="vftCornerTR">TR</div>
+          <div class="vft-corner" data-pos="BL" id="vftCornerBL">BL</div>
+          <div class="vft-corner" data-pos="BR" id="vftCornerBR">BR</div>
+        </div>
+
+        <div class="vft-thresholds" style="flex:1;">
+          <div class="vft-thresh-row">
+            <div class="vft-thresh-hd"><span>Top-Left</span><span class="vft-thresh-val" id="vftThTL">—</span></div>
+            <div class="vft-thresh-track"><div class="vft-thresh-fill" id="vftFillTL"></div></div>
+          </div>
+          <div class="vft-thresh-row">
+            <div class="vft-thresh-hd"><span>Top-Right</span><span class="vft-thresh-val" id="vftThTR">—</span></div>
+            <div class="vft-thresh-track"><div class="vft-thresh-fill" id="vftFillTR"></div></div>
+          </div>
+          <div class="vft-thresh-row">
+            <div class="vft-thresh-hd"><span>Bottom-Left</span><span class="vft-thresh-val" id="vftThBL">—</span></div>
+            <div class="vft-thresh-track"><div class="vft-thresh-fill" id="vftFillBL"></div></div>
+          </div>
+          <div class="vft-thresh-row">
+            <div class="vft-thresh-hd"><span>Bottom-Right</span><span class="vft-thresh-val" id="vftThBR">—</span></div>
+            <div class="vft-thresh-track"><div class="vft-thresh-fill" id="vftFillBR"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size:9px;color:var(--muted);margin-bottom:6px;">Test progress</div>
+      <div class="vft-progress-wrap"><div id="vftProgressFill2"></div></div>
+      <div style="font-size:9px;color:var(--muted);margin-top:6px;" id="vftTrialCount">0 / 0 trials</div>
+    </div>
+
     <div class="panel">
       <div class="plbl">Threshold Override</div>
       <div class="srow">
@@ -348,19 +560,19 @@
 </div>
 
 <script>
-// ===== CENTERGAZE DOCTOR APP =====
+// ===== CENTERGAZE DOCTOR APP (ENHANCED) =====
 
 let tlHistory = [];
 let lastPatientTs = 0;
 let patientOnline = false;
-let sessionAlerts = 0;
+let vftTrialCount = 0;
+let vftTotalTrials = 0;
+let currentVFTStim = null; // { posId, luminance }
 
 // Build timeline
 const tline = document.getElementById('tline');
 for (let i = 0; i < 60; i++) {
-  const s = document.createElement('div');
-  s.className = 'tseg';
-  tline.appendChild(s);
+  const s = document.createElement('div'); s.className = 'tseg'; tline.appendChild(s);
 }
 
 // WebSocket connection
@@ -377,10 +589,8 @@ function connectWS() {
   };
 
   ws.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      handleMessage(data);
-    } catch(ex) { /* ignore */ }
+    try { const data = JSON.parse(e.data); handleMessage(data); }
+    catch(ex) { /* ignore */ }
   };
 
   ws.onclose = () => {
@@ -396,7 +606,7 @@ function connectWS() {
 }
 connectWS();
 
-// Patient heartbeat watchdog — if no message for 4s, patient is offline
+// Patient heartbeat watchdog
 setInterval(() => {
   if (patientOnline && Date.now() - lastPatientTs > 4000) {
     patientOnline = false;
@@ -406,6 +616,18 @@ setInterval(() => {
     addAlert('Patient disconnected', 'l');
   }
 }, 1000);
+
+const ARROWS = {
+  'center': { sym: '●', label: 'Center' },
+  'right': { sym: '→', label: 'Right' },
+  'left': { sym: '←', label: 'Left' },
+  'up': { sym: '↑', label: 'Up' },
+  'down': { sym: '↓', label: 'Down' },
+  'up-right': { sym: '↗', label: 'Up-Right' },
+  'up-left': { sym: '↖', label: 'Up-Left' },
+  'down-right': { sym: '↘', label: 'Down-Right' },
+  'down-left': { sym: '↙', label: 'Down-Left' },
+};
 
 function handleMessage(d) {
   lastPatientTs = Date.now();
@@ -433,15 +655,99 @@ function handleMessage(d) {
     addAlert('Baseline created — tracking active', 'c');
   }
 
+  if (d.type === 'screen_metrics') {
+    document.getElementById('mScreenW').textContent = d.screenW;
+    document.getElementById('mScreenH').textContent = d.screenH;
+    addAlert(`Screen: ${d.screenW}×${d.screenH} px · DPR: ${d.dpr}`, 'i');
+  }
+
+  if (d.type === 'cam_frame') {
+    const img = document.getElementById('camFeed');
+    img.src = d.frame;
+    img.style.opacity = '1';
+  }
+
   if (d.type === 'gaze') {
     updateDashboard(d);
   }
+
+  // ===== VFT events =====
+  if (d.type === 'vft_start') {
+    vftTotalTrials = d.totalTrials;
+    vftTrialCount = 0;
+    document.getElementById('vftDot').className = 'vft-status-dot running';
+    document.getElementById('vftStatusLabel').textContent = 'Test running';
+    document.getElementById('vftStatusSub').textContent = `0/${vftTotalTrials}`;
+    document.getElementById('vftProgressFill2').style.width = '0%';
+    addAlert('Visual field test started', 'p');
+    // Reset corners
+    ['TL','TR','BL','BR'].forEach(id => {
+      document.getElementById('vftCorner'+id).className = 'vft-corner';
+    });
+  }
+
+  if (d.type === 'vft_stim') {
+    currentVFTStim = { posId: d.posId, luminance: d.luminance };
+    vftTrialCount = d.trialIndex + 1;
+    document.getElementById('vftStatusSub').textContent = `${vftTrialCount}/${vftTotalTrials}`;
+    document.getElementById('vftProgressFill2').style.width = (vftTrialCount / vftTotalTrials * 100) + '%';
+    document.getElementById('vftTrialCount').textContent = `${vftTrialCount} / ${vftTotalTrials} trials`;
+    // Highlight active corner
+    ['TL','TR','BL','BR'].forEach(id => {
+      const el = document.getElementById('vftCorner'+id);
+      if (id === d.posId) {
+        el.classList.add('active');
+        el.textContent = d.luminance;
+      } else {
+        el.classList.remove('active');
+        el.textContent = id;
+      }
+    });
+  }
+
+  if (d.type === 'vft_response') {
+    const el = document.getElementById('vftCorner' + d.posId);
+    el.classList.remove('active');
+    if (d.hit) {
+      el.classList.add('hit');
+      setTimeout(() => el.classList.remove('hit'), 600);
+    } else {
+      el.classList.add('miss');
+      setTimeout(() => el.classList.remove('miss'), 600);
+    }
+    el.textContent = d.posId;
+
+    // Update thresholds
+    if (d.thresholds) updateVFTThresholds(d.thresholds);
+    addAlert(`VFT ${d.posId}: lum=${d.luminance} → ${d.hit ? 'SEEN' : 'MISSED'}${d.hit ? ` RT=${d.rt}ms` : ''}`, 'p');
+  }
+
+  if (d.type === 'vft_complete') {
+    document.getElementById('vftDot').className = 'vft-status-dot done';
+    document.getElementById('vftStatusLabel').textContent = 'Test complete';
+    document.getElementById('vftProgressFill2').style.width = '100%';
+    document.getElementById('vftTrialCount').textContent = `${vftTotalTrials} / ${vftTotalTrials} trials`;
+    if (d.thresholds) updateVFTThresholds(d.thresholds);
+    addAlert(`VFT complete — thresholds: TL=${d.thresholds.TL} TR=${d.thresholds.TR} BL=${d.thresholds.BL} BR=${d.thresholds.BR}`, 'p');
+  }
+}
+
+function updateVFTThresholds(thresholds) {
+  ['TL','TR','BL','BR'].forEach(id => {
+    const val = thresholds[id];
+    const label = document.getElementById('vftTh'+id);
+    const fill = document.getElementById('vftFill'+id);
+    if (val === null || val === undefined) return;
+    label.textContent = val + '/255';
+    const pct = (val / 255) * 100;
+    fill.style.width = pct + '%';
+    fill.className = 'vft-thresh-fill' + (val < 64 ? ' lo' : val < 128 ? ' mid' : ' hi');
+  });
 }
 
 let lastAlertState = null;
 
 function updateDashboard(d) {
-  // Patient status
   if (!d.facePresent) {
     document.getElementById('noFaceWarn').classList.add('show');
     setPatientStatus('active', 'No face detected');
@@ -455,7 +761,7 @@ function updateDashboard(d) {
     setPatientStatus('active', 'Awaiting baseline');
   }
 
-  // State
+  // Gaze state
   const heroBig = document.getElementById('stateBig');
   const heroCard = document.getElementById('heroCard');
   if (d.state === 'c') {
@@ -474,7 +780,7 @@ function updateDashboard(d) {
     heroCard.className = 'hero-card';
   }
 
-  // Deviation value
+  // Deviation
   const devEl = document.getElementById('devValue');
   devEl.innerHTML = `${d.deviation.toFixed(1)}<span class="dev-unit">°</span>`;
   if (d.deviation >= d.threshold) devEl.className = 'dev-value danger';
@@ -498,12 +804,33 @@ function updateDashboard(d) {
   else if (d.distanceStatus === 'close') { distPill.textContent = 'Distance: Too close'; distPill.className = 'pill warn'; }
   else { distPill.textContent = 'Distance: —'; distPill.className = 'pill'; }
 
+  // Distance in cm
+  const cmPill = document.getElementById('distCmPill');
+  if (d.distanceCm) {
+    cmPill.textContent = `~${d.distanceCm} cm`;
+    const mDistEl = document.getElementById('mDistCm');
+    mDistEl.textContent = d.distanceCm + ' cm';
+    mDistEl.className = 'metric-num' +
+      (d.distanceCm < 40 ? ' danger' : d.distanceCm < 50 ? ' warn' : d.distanceCm > 90 ? ' warn' : ' accent');
+  }
+
   document.getElementById('facePill').textContent = d.facePresent ? 'Face: detected' : 'Face: absent';
   document.getElementById('facePill').className = 'pill' + (d.facePresent ? ' ok' : ' bad');
   document.getElementById('threshPill').textContent = `Threshold: ${d.threshold}°`;
   const bp = document.getElementById('baselinePill');
   if (d.baselineComplete) { bp.textContent = 'Baseline: set'; bp.className = 'pill ok'; }
   else { bp.textContent = 'No baseline'; bp.className = 'pill warn'; }
+
+  // Gaze direction
+  if (d.gazeDir) {
+    const info = ARROWS[d.gazeDir] || ARROWS['center'];
+    const arrowEl = document.getElementById('gazeDirArrow');
+    arrowEl.textContent = info.sym;
+    arrowEl.className = 'gaze-arrow-big' + (d.gazeDir === 'center' ? ' center' : '');
+    document.getElementById('gazeDirText').textContent = info.label;
+    document.getElementById('gazeDirPill').textContent = 'Gaze: ' + info.label;
+    document.getElementById('gazeDirPill').className = 'pill' + (d.gazeDir === 'center' ? ' ok' : ' warn');
+  }
 
   // Live signals
   if (d.iLdev !== undefined) {
@@ -524,7 +851,6 @@ function updateDashboard(d) {
     document.getElementById('sAlerts').textContent = d.alerts || 0;
   }
 
-  // Timeline
   updateTimeline(d.state);
 }
 
@@ -581,16 +907,11 @@ function addAlert(msg, cls = 'i') {
   d.innerHTML = `<span class="at">${t}</span><span class="am">${msg}</span>`;
   feed.appendChild(d);
   feed.scrollTop = feed.scrollHeight;
-  if (feed.children.length > 80) feed.removeChild(feed.children[0]);
+  if (feed.children.length > 120) feed.removeChild(feed.children[0]);
 }
 
-function clearFeed() {
-  document.getElementById('alertFeed').innerHTML = '';
-}
-
-function updateThreshDisplay(val) {
-  document.getElementById('svDeg').textContent = val + '°';
-}
+function clearFeed() { document.getElementById('alertFeed').innerHTML = ''; }
+function updateThreshDisplay(val) { document.getElementById('svDeg').textContent = val + '°'; }
 </script>
 </body>
 </html>
