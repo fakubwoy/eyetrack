@@ -293,21 +293,25 @@
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.88);
+    background: transparent;   /* no dark backdrop — dot stays visible */
     z-index: 150;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 18px;
+    pointer-events: none;      /* clicks pass through during countdown */
   }
   #vftCountdown.active { display: flex; }
   .cd-number {
     font-family: var(--sans);
     font-size: 110px;
     font-weight: 800;
-    color: var(--accent);
+    /* translucent so the red dot is visible through the digit */
+    color: rgba(0,240,176,0.35);
     line-height: 1;
-    text-shadow: 0 0 60px rgba(0,240,176,0.5);
+    text-shadow:
+      0 0 60px rgba(0,240,176,0.20),
+      0 0 120px rgba(0,240,176,0.10);
     animation: cdPop 0.85s ease-out;
   }
   @keyframes cdPop {
@@ -319,13 +323,13 @@
     font-size: 11px;
     letter-spacing: 3px;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.3);
+    color: rgba(255,255,255,0.2);
   }
   .cd-hint {
     font-size: 10px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: var(--warn);
+    color: rgba(255,184,48,0.55);
     text-align: center;
     max-width: 320px;
     line-height: 2.2;

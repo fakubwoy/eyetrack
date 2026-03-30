@@ -605,8 +605,11 @@ for (let i = 0; i < 60; i++) {
 const camCanvas = document.getElementById('camCanvas');
 const camCtx = camCanvas.getContext('2d');
 let camFrameCount = 0, camLastFpsTs = Date.now(), camDisplayFps = 0;
-let camImg = new Image(); // reusable image object — avoids creating GC pressure
-let camPending = false;
+// Use a latest-frame queue: if a new frame arrives before onload fires,
+// stash it so we never block but never accumulate unbounded backlog.
+let camImg = new Image();
+let camNextSrc = null;  // latest queued frame (only ever keep the most recent)
+let camDecoding = false;
 
 camImg.onload = () => {
   // Match canvas to incoming resolution
@@ -615,7 +618,6 @@ camImg.onload = () => {
     camCanvas.height = camImg.naturalHeight;
   }
   camCtx.drawImage(camImg, 0, 0);
-  camPending = false;
 
   // FPS tracking
   camFrameCount++;
@@ -626,11 +628,23 @@ camImg.onload = () => {
     camLastFpsTs = now;
     document.getElementById('camFpsLabel').textContent = camDisplayFps;
   }
+
+  // If a newer frame arrived while decoding, render it now instead of going idle
+  if (camNextSrc) {
+    const src = camNextSrc;
+    camNextSrc = null;
+    camImg.src = src;  // camDecoding stays true
+  } else {
+    camDecoding = false;
+  }
 };
 
 function renderCamFrame(dataUrl) {
-  if (camPending) return; // skip if previous frame still decoding (natural back-pressure)
-  camPending = true;
+  if (camDecoding) {
+    camNextSrc = dataUrl;  // stash latest; previous pending (if any) is discarded
+    return;
+  }
+  camDecoding = true;
   camImg.src = dataUrl;
 }
 
