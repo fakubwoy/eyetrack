@@ -673,7 +673,10 @@ function calculateDeviation(iL, iR, yaw, pitch, iLv, iRv) {
   }
   
   dev = Math.min(dev, 30);
-  if (dev < 0.8) dev = 0;
+  // Dead-zone: suppress sub-threshold noise.
+  // Single-eye mode has higher noise floor due to partial face occlusion.
+  const deadzone = activeEye ? 1.5 : 0.8;
+  if (dev < deadzone) dev = 0;
   return dev;
 }
 
@@ -804,10 +807,14 @@ async function loop() {
 
       if (smoothedIL === null) { smoothedIL = iL; smoothedIR = iR; smoothedILv = iLv; smoothedIRv = iRv; }
       else {
-        smoothedIL = EMA_ALPHA * iL + (1 - EMA_ALPHA) * smoothedIL;
-        smoothedIR = EMA_ALPHA * iR + (1 - EMA_ALPHA) * smoothedIR;
-        smoothedILv = EMA_ALPHA * iLv + (1 - EMA_ALPHA) * smoothedILv;
-        smoothedIRv = EMA_ALPHA * iRv + (1 - EMA_ALPHA) * smoothedIRv;
+        // Heavier smoothing in single-eye mode — the covered eye's iris is noisy
+        // and MediaPipe landmark estimates are less stable with partial occlusion.
+        // α=0.15 vs α=0.25: ~2 extra frame lag at 30fps, but much cleaner signal.
+        const alpha = activeEye ? 0.15 : 0.25;
+        smoothedIL  = alpha * iL  + (1 - alpha) * smoothedIL;
+        smoothedIR  = alpha * iR  + (1 - alpha) * smoothedIR;
+        smoothedILv = alpha * iLv + (1 - alpha) * smoothedILv;
+        smoothedIRv = alpha * iRv + (1 - alpha) * smoothedIRv;
       }
 
       const nx = lm[1].x, lx = lm[234].x, rx = lm[454].x;
@@ -830,26 +837,37 @@ async function loop() {
         deviation = calculateDeviation(smoothedIL, smoothedIR, yaw, pitch, smoothedILv, smoothedIRv);
         currentDeviation = deviation;
 
-        const iT = 0.12, yT = 12, pT = 10;
+        // ── Thresholds — wider for single-eye mode ──────────────────────
+        // One covered eye creates noisy iris readings from MediaPipe even at center.
+        // iT: iris ratio deviation before confidence starts dropping
+        //   two-eye: 0.12  |  single-eye: 0.20 (covers natural noise floor)
+        // Off-center debounce: 50ms (two-eye) → 350ms (single-eye)
+        //   prevents noisy single frames from spamming alerts during VFT.
+        const isSingleEye = !!activeEye;
+        const iT = isSingleEye ? 0.20 : 0.12;
+        const yT = 12, pT = 10;
+
         const iLdev = Math.abs(smoothedIL - baseline.iL);
         const iRdev = Math.abs(smoothedIR - baseline.iR);
         const yawDev = Math.abs(yaw - baseline.yaw);
         const pitchDev = Math.abs(pitch - baseline.pitch);
-        const iVdev = baseline.iLv !== undefined ? ((Math.abs(smoothedILv - baseline.iLv) + Math.abs(smoothedIRv - baseline.iRv)) / 2) : 0;
+        // Vertical: only track the active eye in single-eye mode
+        const iVdev = isSingleEye
+          ? (activeEye === 'left'
+              ? Math.abs(smoothedILv - (baseline.iLv || 0.5))
+              : Math.abs(smoothedIRv - (baseline.iRv || 0.5)))
+          : ((Math.abs(smoothedILv - (baseline.iLv || 0.5)) + Math.abs(smoothedIRv - (baseline.iRv || 0.5))) / 2);
 
-        let irisMaxDev;
-        if (activeEye === 'left') {
-          irisMaxDev = iLdev;
-        } else if (activeEye === 'right') {
-          irisMaxDev = iRdev;
-        } else {
-          irisMaxDev = Math.max(iLdev, iRdev);
-        }
-        
+        // irisMaxDev: deviation of the active eye only in single-eye mode
+        const irisMaxDev = activeEye === 'left' ? iLdev
+                         : activeEye === 'right' ? iRdev
+                         : Math.max(iLdev, iRdev);
+
         const irisScore = Math.max(0, 1 - (irisMaxDev / iT));
 
-        if (activeEye) {
-          // Hand-covered face produces chaotic yaw/pitch logic, rely solely on iris confidence
+        if (isSingleEye) {
+          // Single-eye: covered eye corrupts yaw/pitch entirely — use iris only.
+          // Confidence is INFORMATIONAL only — never used alone to trigger off-center.
           confidence = irisScore;
         } else {
           const yawScore = Math.max(0, 1 - (yawDev / yT));
@@ -858,10 +876,18 @@ async function loop() {
         }
 
         const now = Date.now();
-        const isOff = deviation >= alertThresholdDeg || confidence < 0.80;
+        // ── Off-center classification ────────────────────────────────────
+        // Single-eye mode: classify ONLY on deviation degrees — NOT on confidence.
+        //   The covered eye produces wild confidence swings that don't reflect real gaze.
+        // Two-eye mode: both deviation AND low confidence can trigger.
+        const OFF_DEBOUNCE = isSingleEye ? 350 : 50; // ms — longer debounce kills noise spikes
+        const isOff = isSingleEye
+          ? deviation >= alertThresholdDeg
+          : (deviation >= alertThresholdDeg || confidence < 0.80);
+
         if (isOff) {
           if (!awayStart) awayStart = now;
-          if (now - awayStart >= 50 && lastState !== 'o') {
+          if (now - awayStart >= OFF_DEBOUNCE && lastState !== 'o') {
             lastState = 'o'; alerts++;
             document.getElementById('fixationDot').classList.add('pulse');
             setTimeout(() => document.getElementById('fixationDot').classList.remove('pulse'), 300);
