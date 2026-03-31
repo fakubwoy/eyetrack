@@ -54,9 +54,23 @@ async function initDB() {
       note         TEXT NOT NULL DEFAULT '',
       status       TEXT NOT NULL DEFAULT 'pending',
       created_at   BIGINT NOT NULL,
-      used_at      BIGINT
+      used_at      BIGINT,
+      started_at   BIGINT
     )
   `);
+  // Add started_at column if it doesn't exist yet (migration for existing DBs)
+  try {
+    await query(`ALTER TABLE invitations ADD COLUMN IF NOT EXISTS started_at BIGINT`);
+  } catch(e) { /* column already exists */ }
+
+  // FIX 7: On restart, any invitation still 'active' means the server crashed
+  // mid-session. Reset them back to 'pending' so the patient can reconnect.
+  const stale = await query(
+    `UPDATE invitations SET status='pending', started_at=NULL WHERE status='active' RETURNING token`
+  );
+  if (stale.rows.length > 0) {
+    console.log(`[db] Reset ${stale.rows.length} stale active session(s) to pending on startup`);
+  }
   console.log('[db] Tables ready');
 }
 
@@ -96,7 +110,9 @@ function rowToDoctor(r) {
 }
 function rowToInv(r) {
   return { token: r.token, doctorId: r.doctor_id, patientName: r.patient_name, note: r.note,
-           status: r.status, createdAt: Number(r.created_at), usedAt: r.used_at ? Number(r.used_at) : null };
+           status: r.status, createdAt: Number(r.created_at),
+           usedAt: r.used_at ? Number(r.used_at) : null,
+           startedAt: r.started_at ? Number(r.started_at) : null };
 }
 
 // ── Static HTML files ─────────────────────────────────────────────────────────
@@ -208,6 +224,7 @@ function buildDashboardHTML(doctor, invitations, origin) {
   const pending = invitations.filter(i => i.status === 'pending');
   const active  = invitations.filter(i => i.status === 'active');
   const used    = invitations.filter(i => i.status === 'used').slice(-10).reverse();
+  const revoked = invitations.filter(i => i.status === 'revoked').slice(-5).reverse();
 
   function invCard(inv) {
     const link = `${origin}/patient/${inv.token}`;
@@ -222,7 +239,7 @@ function buildDashboardHTML(doctor, invitations, origin) {
         </div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0">
-        <span class="inv-status pending">Pending</span>
+        <span class="inv-status pending" id="status_${inv.token}" data-status="pending">Pending</span>
         <button class="btn sm danger" onclick="revokeInvitation('${inv.token}')">Revoke</button>
       </div>
     </div>`;
@@ -236,7 +253,7 @@ function buildDashboardHTML(doctor, invitations, origin) {
         <div class="inv-meta" style="margin-top:2px">Session started ${timeAgo(inv.usedAt)}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0">
-        <span class="inv-status active">&#9679; Live</span>
+        <span class="inv-status active" id="status_${inv.token}" data-status="active">&#9679; Live</span>
         <a href="/doctor" class="monitor-btn">Monitor &#8594;</a>
       </div>
     </div>`;
@@ -249,7 +266,18 @@ function buildDashboardHTML(doctor, invitations, origin) {
         ${inv.note ? `<div class="inv-meta" style="margin-top:2px">${escapeHtml(inv.note)}</div>` : ''}
         <div class="inv-meta" style="margin-top:2px">Completed ${timeAgo(inv.usedAt||inv.createdAt)}</div>
       </div>
-      <span class="inv-status used">Done</span>
+      <span class="inv-status used" id="status_${inv.token}" data-status="used">Done</span>
+    </div>`;
+  }
+
+  function revokedCard(inv) {
+    return `<div class="inv-item">
+      <div style="flex:1;min-width:0">
+        <div class="inv-name">${escapeHtml(inv.patientName)}</div>
+        ${inv.note ? `<div class="inv-meta" style="margin-top:2px">${escapeHtml(inv.note)}</div>` : ''}
+        <div class="inv-meta" style="margin-top:2px">Revoked ${timeAgo(inv.createdAt)}</div>
+      </div>
+      <span class="inv-status" style="color:var(--muted);background:transparent;border:1px solid var(--border)" id="status_${inv.token}" data-status="revoked">Revoked</span>
     </div>`;
   }
 
@@ -354,6 +382,11 @@ function buildDashboardHTML(doctor, invitations, origin) {
     <div class="card-title">Recent Completed Sessions</div>
     <div class="inv-list">${used.length===0?'<div class="empty">No completed sessions yet</div>':used.map(usedCard).join('')}</div>
   </div>
+
+  ${revoked.length > 0 ? `<div class="card">
+    <div class="card-title">Recently Revoked</div>
+    <div class="inv-list">${revoked.map(revokedCard).join('')}</div>
+  </div>` : ''}
 </div>
 
 <div class="toast" id="toast">Copied!</div>
@@ -383,6 +416,40 @@ function copyLink(text){
     const t=document.getElementById('toast');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000);
   });
 }
+
+// Poll for status changes every 5s and update badges in-place (no full reload)
+const STATUS_LABELS = { pending:'Pending', active:'&#9679; Live', used:'Done', revoked:'Revoked' };
+const STATUS_CLASSES = { pending:'pending', active:'active', used:'used', revoked:'revoked' };
+async function pollStatuses() {
+  try {
+    const r = await fetch('/api/invitations/statuses');
+    if (!r.ok) return;
+    const { statuses } = await r.json();
+    let needsReload = false;
+    Object.entries(statuses).forEach(([token, status]) => {
+      const badge = document.getElementById('status_' + token);
+      if (!badge) return;
+      const prev = badge.dataset.status;
+      if (prev === status) return;
+      // FIX 5: Only reload for transitions that require the card to move sections:
+      //   pending → active  (patient joined — move card to Active Sessions)
+      //   active  → used    (test completed — move card to Completed)
+      //   active  → pending (patient dropped mid-test — card stays in place, just rebadge)
+      // Do NOT reload for 'revoked' — the doctor triggered that themselves so
+      // the card is already hidden/gone. Reloading caused a false "Done" flash.
+      if (status === 'used' || (prev === 'pending' && status === 'active')) {
+        needsReload = true;
+      } else if (prev === 'active' && status === 'pending') {
+        // Patient dropped — update badge in-place without full reload
+        badge.className = 'inv-status pending';
+        badge.dataset.status = 'pending';
+        badge.textContent = 'Dropped';
+      }
+    });
+    if (needsReload) location.reload();
+  } catch(e) {}
+}
+setInterval(pollStatuses, 5000);
 
 </script>
 </body>
@@ -497,6 +564,14 @@ const server = http.createServer(async (req, res) => {
       if (!doctor) return sendJSON(res, 401, { error: 'Not authenticated' });
       const { patientName, note } = await readBody(req);
       if (!patientName) return sendJSON(res, 400, { error: 'Patient name required' });
+      // FIX 6: Limit pending invitations per doctor to prevent spam/runaway links
+      const pendingCount = await query(
+        `SELECT COUNT(*) FROM invitations WHERE doctor_id=$1 AND status='pending'`,
+        [doctor.id]
+      );
+      if (parseInt(pendingCount.rows[0].count, 10) >= 20) {
+        return sendJSON(res, 429, { error: 'Too many pending invitations (max 20). Revoke unused links first.' });
+      }
       const token = generateToken();
       await query(
         'INSERT INTO invitations (token, doctor_id, patient_name, note, status, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
@@ -505,13 +580,31 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { ok: true, token });
     }
 
+    if (url === '/api/invitations/statuses' && req.method === 'GET') {
+      if (!doctor) return sendJSON(res, 401, { error: 'Not authenticated' });
+      const r = await query(
+        'SELECT token, status FROM invitations WHERE doctor_id = $1',
+        [doctor.id]
+      );
+      const statuses = {};
+      r.rows.forEach(row => { statuses[row.token] = row.status; });
+      return sendJSON(res, 200, { statuses });
+    }
+
     if (url.startsWith('/api/invitations/') && req.method === 'DELETE') {
       if (!doctor) return sendJSON(res, 401, { error: 'Not authenticated' });
       const token = url.replace('/api/invitations/', '');
-      const r = await query('SELECT doctor_id FROM invitations WHERE token = $1', [token]);
+      const r = await query('SELECT doctor_id, status FROM invitations WHERE token = $1', [token]);
       if (!r.rows.length || r.rows[0].doctor_id !== doctor.id)
         return sendJSON(res, 404, { error: 'Not found' });
-      await query('DELETE FROM invitations WHERE token = $1', [token]);
+      // FIX 5: Soft-delete by marking 'revoked' instead of hard DELETE.
+      // This preserves audit history and prevents false "completed" status on the dashboard.
+      // Only pending/active sessions can be revoked — used/revoked ones are already closed.
+      const status = r.rows[0].status;
+      if (status === 'used' || status === 'revoked') {
+        return sendJSON(res, 400, { error: 'Cannot revoke a session that is already completed or revoked.' });
+      }
+      await query(`UPDATE invitations SET status='revoked' WHERE token=$1`, [token]);
       return sendJSON(res, 200, { ok: true });
     }
 
@@ -553,7 +646,8 @@ const server = http.createServer(async (req, res) => {
     if (patMatch) {
       const r = await query('SELECT * FROM invitations WHERE token = $1', [patMatch[1]]);
       const inv = r.rows[0] ? rowToInv(r.rows[0]) : null;
-      if (!inv || inv.status === 'expired') return sendHTML(res, errorPage('This invitation link has expired or is invalid.'), 404);
+      if (!inv || inv.status === 'expired' || inv.status === 'revoked')
+        return sendHTML(res, errorPage('This invitation link has been revoked or is invalid.'), 404);
       if (inv.status === 'used') return sendHTML(res, errorPage('This session has already been completed. Please ask your doctor for a new link.'), 410);
       const dr = await query('SELECT * FROM doctors WHERE id = $1', [inv.doctorId]);
       const doc = dr.rows[0] ? rowToDoctor(dr.rows[0]) : null;
@@ -565,10 +659,14 @@ const server = http.createServer(async (req, res) => {
     if (patStart) {
       const r = await query('SELECT * FROM invitations WHERE token = $1', [patStart[1]]);
       const inv = r.rows[0] ? rowToInv(r.rows[0]) : null;
-      if (!inv || inv.status === 'expired') return sendHTML(res, errorPage('This invitation link has expired or is invalid.'), 404);
+      if (!inv || inv.status === 'expired' || inv.status === 'revoked')
+        return sendHTML(res, errorPage('This invitation link has been revoked or is invalid.'), 404);
       if (inv.status === 'used') return sendHTML(res, errorPage('This session has already been completed.'), 410);
+      // FIX 1 & 2: Track 'started_at' the moment the patient clicks Begin,
+      // but don't mark 'active' here — the WS connection is the true signal.
+      // This avoids the race where HTTP sets 'active' but the WS never opens.
       if (inv.status === 'pending') {
-        await query('UPDATE invitations SET status=$1, used_at=$2 WHERE token=$3', ['active', Date.now(), patStart[1]]);
+        await query('UPDATE invitations SET started_at=$1 WHERE token=$2', [Date.now(), patStart[1]]);
       }
       if (!STATIC.patient) { res.writeHead(503); res.end('patient.html not loaded'); return; }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': STATIC.patient.length, 'Cache-Control': 'no-store' });
@@ -626,6 +724,7 @@ if (WebSocketServer) {
     if (role === 'patient') {
       const r = await query('SELECT * FROM invitations WHERE token = $1', [token]);
       const inv = r.rows[0] ? rowToInv(r.rows[0]) : null;
+      // FIX 3: Allow reconnect — accept 'pending' OR 'active' (patient refresh mid-session)
       if (!inv || (inv.status !== 'active' && inv.status !== 'pending')) {
         ws.close(1008, 'Invalid or expired token'); return;
       }
@@ -635,10 +734,13 @@ if (WebSocketServer) {
         ws.close(1008, 'Session busy — another patient is already connected'); return;
       }
 
-      if (inv.status === 'pending') {
-        await query('UPDATE invitations SET status=$1, used_at=$2 WHERE token=$3', ['active', Date.now(), token]);
-        inv.status = 'active';
-      }
+      // FIX 2 & 3: Mark 'active' only on WS open (not on HTTP /start).
+      // used_at is set when the test truly completes, not on disconnect.
+      await query('UPDATE invitations SET status=$1, used_at=$2 WHERE token=$3', ['active', Date.now(), token]);
+      inv.status = 'active';
+
+      // Track whether the test completed during this WS session
+      let testCompleted = false;
 
       room.patient  = ws;
       room.invToken = token;
@@ -646,6 +748,15 @@ if (WebSocketServer) {
 
       ws.on('message', (raw, isBinary) => {
         const payload = isBinary ? raw : raw.toString('utf8');
+
+        // FIX 2: Listen for the completion signal so we know the test truly finished
+        try {
+          const msg = JSON.parse(isBinary ? raw.toString('utf8') : raw.toString('utf8'));
+          if (msg.type === 'vft_both_complete') {
+            testCompleted = true;
+          }
+        } catch(e) { /* non-JSON frames are fine */ }
+
         for (const doc of room.doctors) {
           if (doc.readyState !== 1) continue;
           if (doc.bufferedAmount > MAX_MESSAGE_BYTES * 3) continue;
@@ -657,11 +768,24 @@ if (WebSocketServer) {
         if (room.patient === ws) {
           room.patient  = null;
           room.invToken = null;
-          if (inv.status === 'active') {
+
+          if (testCompleted) {
+            // Test finished normally — seal the session as 'used'
             await query('UPDATE invitations SET status=$1 WHERE token=$2', ['used', token]);
             inv.status = 'used';
+            console.log(`[WS] -patient(${inv.patientName}) — session completed`);
+          } else {
+            // FIX 2: Patient disconnected mid-test (refresh, crash, closed tab).
+            // Reset to 'pending' so the link stays valid and the patient can reconnect.
+            await query('UPDATE invitations SET status=$1 WHERE token=$2', ['pending', token]);
+            inv.status = 'pending';
+            console.log(`[WS] -patient(${inv.patientName}) — disconnected before completion, reset to pending`);
+            // Notify doctor that patient dropped so they're not left staring at a frozen screen
+            const dropMsg = JSON.stringify({ type: 'patient_disconnected', ts: Date.now() });
+            for (const doc of room.doctors) {
+              if (doc.readyState === 1) doc.send(dropMsg);
+            }
           }
-          console.log(`[WS] -patient(${inv.patientName}) room=${inv.doctorId}`);
         }
       });
 

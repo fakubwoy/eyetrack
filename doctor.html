@@ -1002,6 +1002,18 @@ function handleMessage(d) {
       document.getElementById('csvDownloadBtn').innerHTML = '<svg style="margin-right: 6px;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download Partial Eye CSV';
     }
   }
+
+  // FIX 2: Patient dropped mid-session (refresh, crash, closed tab)
+  // Server resets status to 'pending' and notifies doctor explicitly.
+  if (d.type === 'patient_disconnected') {
+    patientOnline = false;
+    setPatientStatus('offline', '—');
+    document.getElementById('waitOverlay').classList.remove('hidden');
+    document.getElementById('mainGrid').classList.add('hidden');
+    document.getElementById('connDot').className = 'conn-dot connected';
+    document.getElementById('connLabel').textContent = 'Connected · Patient disconnected';
+    addAlert('⚠ Patient disconnected before completing the test. The link is still active — they can rejoin.', 'o');
+  }
 }
 
 function updateEyeTabs(eye, done) {
