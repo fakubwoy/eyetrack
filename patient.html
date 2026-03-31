@@ -569,9 +569,16 @@ const IRIS_RATIO_TO_DEGREES = 83;
 let ws = null;
 let wsConnected = false;
 
+function getPatientToken() {
+  // URL is /patient/:token/start — extract the 40-char hex token
+  const m = location.pathname.match(/\/patient\/([a-f0-9]{40})/);
+  return m ? m[1] : '';
+}
+
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const url = `${proto}://${location.host}/?role=patient`;
+  const token = getPatientToken();
+  const url = `${proto}://${location.host}/ws?role=patient&token=${token}`;
   ws = new WebSocket(url);
   ws.onopen = () => {
     wsConnected = true;

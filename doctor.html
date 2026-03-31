@@ -759,7 +759,7 @@ for (let i = 0; i < 60; i++) {
 let ws = null;
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const url = `${proto}://${location.host}/?role=doctor`;
+  const url = `${proto}://${location.host}/ws?role=doctor`;
   ws = new WebSocket(url);
 
   ws.onopen = () => {
