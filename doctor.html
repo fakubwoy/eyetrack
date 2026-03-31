@@ -242,50 +242,49 @@
   .vft-status-label { display: flex; align-items: center; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text); }
   .vft-status-sub { font-size: 9px; color: var(--muted); margin-left: auto; }
 
-  /* VFT corner map */
+  /* VFT 4×4 grid map */
   .vft-map-wrap {
-    display: flex; align-items: center; justify-content: center;
-    gap: 16px;
+    display: flex; align-items: flex-start; justify-content: center;
+    gap: 12px;
     margin-bottom: 12px;
   }
   .vft-map {
-    position: relative;
-    width: 120px; height: 120px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
     background: var(--surface2);
     border-radius: 6px;
     border: 1px solid var(--border);
+    padding: 6px;
     flex-shrink: 0;
+    width: 148px;
   }
-  .vft-corner {
-    position: absolute;
+  .vft-cell {
     width: 28px; height: 28px;
-    border-radius: 50%;
+    border-radius: 4px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 9px; font-weight: 700;
+    font-size: 7px; font-weight: 700;
     background: var(--surface);
     border: 1.5px solid var(--border);
     color: var(--muted);
-    transition: all 0.4s;
+    transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
   }
-  .vft-corner[data-pos="TL"] { top: 8px; left: 8px; }
-  .vft-corner[data-pos="TR"] { top: 8px; right: 8px; }
-  .vft-corner[data-pos="BL"] { bottom: 8px; left: 8px; }
-  .vft-corner[data-pos="BR"] { bottom: 8px; right: 8px; }
-  .vft-center-dot {
-    position: absolute; top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    width: 8px; height: 8px; border-radius: 50%;
-    background: #ff3a5c;
-    box-shadow: 0 0 6px rgba(255,58,92,0.5);
-  }
-  .vft-corner.active {
+  .vft-cell.active {
     border-color: var(--purple);
     background: var(--purple-dim);
     color: var(--purple);
-    box-shadow: 0 0 8px rgba(180,143,255,0.3);
+    box-shadow: 0 0 6px rgba(180,143,255,0.35);
   }
-  .vft-corner.hit { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
-  .vft-corner.miss { border-color: var(--danger); background: var(--danger-dim); color: var(--danger); }
+  .vft-cell.hit { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+  .vft-cell.miss { border-color: var(--danger); background: var(--danger-dim); color: var(--danger); }
+  /* Quadrant label overlay in corner */
+  .vft-cell[data-quad]::after {
+    content: attr(data-quad);
+    position: absolute; bottom: 1px; right: 2px;
+    font-size: 5px; color: rgba(255,255,255,0.15); font-weight: 400;
+  }
 
   /* VFT threshold bars */
   .vft-thresholds { display: flex; flex-direction: column; gap: 7px; }
@@ -644,14 +643,25 @@
         </div>
       </div>
 
-      <!-- Corner map (shows active eye's live positions) -->
+      <!-- 4×4 grid map (mirrors the actual 16-position test grid) -->
       <div class="vft-map-wrap">
         <div class="vft-map" id="vftMap">
-          <div class="vft-center-dot"></div>
-          <div class="vft-corner" data-pos="TL" id="vftCornerTL">TL</div>
-          <div class="vft-corner" data-pos="TR" id="vftCornerTR">TR</div>
-          <div class="vft-corner" data-pos="BL" id="vftCornerBL">BL</div>
-          <div class="vft-corner" data-pos="BR" id="vftCornerBR">BR</div>
+          <div class="vft-cell" id="vftCell_R1C1" data-quad="TL">R1C1</div>
+          <div class="vft-cell" id="vftCell_R1C2" data-quad="TL">R1C2</div>
+          <div class="vft-cell" id="vftCell_R1C3" data-quad="TR">R1C3</div>
+          <div class="vft-cell" id="vftCell_R1C4" data-quad="TR">R1C4</div>
+          <div class="vft-cell" id="vftCell_R2C1" data-quad="TL">R2C1</div>
+          <div class="vft-cell" id="vftCell_R2C2" data-quad="TL">R2C2</div>
+          <div class="vft-cell" id="vftCell_R2C3" data-quad="TR">R2C3</div>
+          <div class="vft-cell" id="vftCell_R2C4" data-quad="TR">R2C4</div>
+          <div class="vft-cell" id="vftCell_R3C1" data-quad="BL">R3C1</div>
+          <div class="vft-cell" id="vftCell_R3C2" data-quad="BL">R3C2</div>
+          <div class="vft-cell" id="vftCell_R3C3" data-quad="BR">R3C3</div>
+          <div class="vft-cell" id="vftCell_R3C4" data-quad="BR">R3C4</div>
+          <div class="vft-cell" id="vftCell_R4C1" data-quad="BL">R4C1</div>
+          <div class="vft-cell" id="vftCell_R4C2" data-quad="BL">R4C2</div>
+          <div class="vft-cell" id="vftCell_R4C3" data-quad="BR">R4C3</div>
+          <div class="vft-cell" id="vftCell_R4C4" data-quad="BR">R4C4</div>
         </div>
         <div style="flex:1;font-size:9px;color:var(--muted);line-height:2;" id="vftLiveLog">Awaiting test...</div>
       </div>
@@ -697,6 +707,47 @@ let vftLastThresholds = {};
 let vftCumulativeLog = [];     
 let vftEyeThresholds = { left: {}, right: {} }; 
 let currentTestEye = null;     
+
+// All 16 position IDs in grid order (row-major, top-left → bottom-right)
+const VFT_ALL_IDS = [
+  'R1C1','R1C2','R1C3','R1C4',
+  'R2C1','R2C2','R2C3','R2C4',
+  'R3C1','R3C2','R3C3','R3C4',
+  'R4C1','R4C2','R4C3','R4C4',
+];
+
+// Maps each of the 16 positions to its quadrant (for threshold summary display)
+const POS_TO_QUAD = {
+  R1C1:'TL', R1C2:'TL', R2C1:'TL', R2C2:'TL',
+  R1C3:'TR', R1C4:'TR', R2C3:'TR', R2C4:'TR',
+  R3C1:'BL', R3C2:'BL', R4C1:'BL', R4C2:'BL',
+  R3C3:'BR', R3C4:'BR', R4C3:'BR', R4C4:'BR',
+};
+
+// Positions per quadrant (for threshold aggregation)
+const QUAD_POSITIONS = {
+  TL: ['R1C1','R1C2','R2C1','R2C2'],
+  TR: ['R1C3','R1C4','R2C3','R2C4'],
+  BL: ['R3C1','R3C2','R4C1','R4C2'],
+  BR: ['R3C3','R3C4','R4C3','R4C4'],
+};
+
+// Compute per-quadrant average threshold from the full 16-position threshold map
+function aggregateToQuadrants(thresholds) {
+  const result = {};
+  ['TL','TR','BL','BR'].forEach(q => {
+    const vals = QUAD_POSITIONS[q]
+      .map(id => thresholds[id])
+      .filter(v => v !== null && v !== undefined);
+    result[q] = vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+  });
+  return result;
+}
+
+// Helper: get a cell element by posId
+function vftCell(posId) {
+  return document.getElementById('vftCell_' + posId);
+}
 
 // Build timeline
 const tline = document.getElementById('tline');
@@ -811,10 +862,10 @@ function handleMessage(d) {
     currentTestEye = d.eye;
     updateEyeTabs(d.eye, false);
     addAlert(`Patient selected ${d.eye} eye for testing`, 'p');
-    // Reset corner map for new eye
-    ['TL','TR','BL','BR'].forEach(id => {
-      document.getElementById('vftCorner'+id).className = 'vft-corner';
-      document.getElementById('vftCorner'+id).textContent = id;
+    // Reset all 16 grid cells for the new eye
+    VFT_ALL_IDS.forEach(id => {
+      const el = vftCell(id);
+      if (el) { el.className = 'vft-cell'; el.textContent = id; }
     });
   }
 
@@ -837,10 +888,10 @@ function handleMessage(d) {
     document.getElementById('vftProgressFill2').style.width = '0%';
     document.getElementById('vftLiveLog').textContent = `Testing ${currentTestEye || '?'} eye…`;
     addAlert(`Visual field test started — ${currentTestEye || '?'} eye`, 'p');
-    // Reset corners
-    ['TL','TR','BL','BR'].forEach(id => {
-      document.getElementById('vftCorner'+id).className = 'vft-corner';
-      document.getElementById('vftCorner'+id).textContent = id;
+    // Reset all 16 grid cells
+    VFT_ALL_IDS.forEach(id => {
+      const el = vftCell(id);
+      if (el) { el.className = 'vft-cell'; el.textContent = id; }
     });
     updateEyeTabs(currentTestEye, false);
   }
@@ -852,9 +903,10 @@ function handleMessage(d) {
     const pct = vftTotalTrials ? Math.min(99, vftTrialCount / vftTotalTrials * 100) : 0;
     document.getElementById('vftProgressFill2').style.width = pct + '%';
     document.getElementById('vftTrialCount').textContent = `${vftTrialCount} trials (adaptive)`;
-    // Highlight active corner
-    ['TL','TR','BL','BR'].forEach(id => {
-      const el = document.getElementById('vftCorner'+id);
+    // Highlight the active cell in the 4×4 grid
+    VFT_ALL_IDS.forEach(id => {
+      const el = vftCell(id);
+      if (!el) return;
       if (id === d.posId) {
         el.classList.add('active');
         el.textContent = d.luminance;
@@ -866,20 +918,23 @@ function handleMessage(d) {
   }
 
   if (d.type === 'vft_response') {
-    const el = document.getElementById('vftCorner' + d.posId);
-    el.classList.remove('active');
-    if (d.hit) {
-      el.classList.add('hit');
-      setTimeout(() => { el.classList.remove('hit'); el.textContent = d.posId; }, 600);
-    } else {
-      el.classList.add('miss');
-      setTimeout(() => { el.classList.remove('miss'); el.textContent = d.posId; }, 600);
+    const el = vftCell(d.posId);
+    if (el) {
+      el.classList.remove('active');
+      if (d.hit) {
+        el.classList.add('hit');
+        el.textContent = d.luminance;
+        setTimeout(() => { el.classList.remove('hit'); el.textContent = d.posId; }, 800);
+      } else {
+        el.classList.add('miss');
+        el.textContent = d.luminance;
+        setTimeout(() => { el.classList.remove('miss'); el.textContent = d.posId; }, 800);
+      }
     }
-    el.textContent = d.posId;
 
-    // Update per-eye thresholds live
+    // Update per-eye thresholds live (aggregate 16→4 quadrants for the summary bars)
     const eye = d.eye || currentTestEye;
-    if (d.thresholds && eye) updateDualEyeThresholds(eye, d.thresholds);
+    if (d.thresholds && eye) updateDualEyeThresholds(eye, aggregateToQuadrants(d.thresholds));
     addAlert(`VFT [${eye || '?'}] ${d.posId}: lum=${d.luminance} → ${d.hit ? 'SEEN' : 'MISSED'}${d.hit ? ` RT=${d.rt}ms` : ''}`, 'p');
   }
 
@@ -901,12 +956,16 @@ function handleMessage(d) {
     if (d.thresholds) {
       if (eye) {
         vftEyeThresholds[eye] = d.thresholds;
-        updateDualEyeThresholds(eye, d.thresholds);
+        // Aggregate the 16-position thresholds into 4 quadrant averages for display
+        const quadThresh = aggregateToQuadrants(d.thresholds);
+        updateDualEyeThresholds(eye, quadThresh);
+        vftLastThresholds = d.thresholds;
+        const fmt = id => (quadThresh[id] !== null && quadThresh[id] !== undefined) ? quadThresh[id] : '?';
+        addAlert(`VFT [${eye}] complete — TL=${fmt('TL')} TR=${fmt('TR')} BL=${fmt('BL')} BR=${fmt('BR')}`, 'p');
+      } else {
+        vftLastThresholds = d.thresholds;
+        addAlert(`VFT complete`, 'p');
       }
-      vftLastThresholds = d.thresholds;
-      const th = d.thresholds;
-      const fmt = id => (th[id] !== null && th[id] !== undefined) ? th[id] : '?';
-      addAlert(`VFT [${eye}] complete — TL=${fmt('TL')} TR=${fmt('TR')} BL=${fmt('BL')} BR=${fmt('BR')}`, 'p');
     } else {
       addAlert(`VFT [${eye}] complete`, 'p');
     }
@@ -1013,21 +1072,19 @@ function downloadVFTCSV(mode) {
     r.timestamp_ms
   ].map(escape).join(','));
 
-  // Threshold summary rows
+  // Threshold summary rows — use all 16 positions
   const threshLines = [];
   if (isCombined) {
     ['left','right'].forEach(eye => {
       const th = vftEyeThresholds[eye];
       if (!th || Object.keys(th).length === 0) return;
-      const posNames = { TL:'Top-Left', TR:'Top-Right', BL:'Bottom-Left', BR:'Bottom-Right' };
       Object.entries(th).forEach(([id, val]) => {
-        threshLines.push(`,,FINAL THRESHOLD [${eye.toUpperCase()}] — ${posNames[id] || id},,,,${val !== null && val !== undefined ? val : '?'},,`);
+        threshLines.push(`,,FINAL THRESHOLD [${eye.toUpperCase()}] — ${id},,,,${val !== null && val !== undefined ? val : '?'},,`);
       });
     });
   } else if (thresholds) {
-    const posNames = { TL:'Top-Left', TR:'Top-Right', BL:'Bottom-Left', BR:'Bottom-Right' };
     Object.entries(thresholds).forEach(([id, val]) => {
-      threshLines.push(`,,FINAL THRESHOLD — ${posNames[id] || id},,,,${val !== null && val !== undefined ? val : '?'},,`);
+      threshLines.push(`,,FINAL THRESHOLD — ${id},,,,${val !== null && val !== undefined ? val : '?'},,`);
     });
   }
 
