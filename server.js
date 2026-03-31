@@ -179,8 +179,8 @@ const LOGIN_HTML = `<!DOCTYPE html>
 </div>
 <script>
 function showTab(t){
-  document.getElementById('loginForm').style.display=t==='login'?'':'none';
-  document.getElementById('signupForm').style.display=t==='signup'?'':'none';
+  document.getElementById('loginForm').style.display=t==='login'?'block':'none';
+  document.getElementById('signupForm').style.display=t==='signup'?'block':'none';
   document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',(i===0&&t==='login')||(i===1&&t==='signup')));
   document.getElementById('errBox').classList.remove('show');
 }
