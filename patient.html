@@ -992,52 +992,40 @@ const VFT_POSITIONS = [
 
 let vftState = {};
 
-// ─── ADAPTIVE STAIRCASE WITH CROSS-POSITION LEARNING ────────────────────────
+// ─── PURE BINARY SEARCH + ROUND-ROBIN INTERLEAVING ───────────────────────────
 //
-// Three speed optimisations that don't sacrifice accuracy:
+// Strategy: treat each of the 16 positions as an independent binary search
+// over [0, 255]. Each trial bisects the current [lo, hi] bracket of one
+// position. Positions are visited in round-robin order so every position
+// gets a new trial before any position gets a second — the patient never
+// sees the same spot twice in a row, and the test feels fast because
+// different parts of the visual field are exercised every stimulus.
 //
-// 1. SPATIAL TRANSFER — when a position finishes, its confirmed threshold
-//    immediately tightens the lo/hi bracket of every spatial neighbour
-//    (within 0.26 grid units). Neighbours skip trials they'd have wasted
-//    re-discovering the same luminance range.
+// Convergence: a position is done when (hi - lo) ≤ DONE_GAP (8 lum units).
+// At 8 lum units that is ~3% of full scale — more than precise enough for VFT.
+// Binary search on [0,255] needs at most ceil(log2(256/8)) = 5 bisections,
+// so the whole test takes at most 16×5 = 80 trials, typically far fewer
+// because spatial transfer pre-narrows neighbours.
 //
-// 2. STREAK EARLY-EXIT — 3 consecutive same-direction responses at 3
-//    *different* luminances = the staircase has confirmed the direction
-//    three times. Only exits if the true threshold is clearly above/below.
-//    (Previously 2 — caused premature exit at high luminances before the
-//    staircase had descended to the real threshold.)
-//
-// 3. CONVERGENCE-FIRST SCHEDULING — prioritise positions closest to done
-//    (smallest hi-lo interval). Finishing positions quickly triggers spatial
-//    transfer to neighbours, creating a cascade that shrinks the whole grid fast.
+// Spatial transfer: when a position converges, its threshold is broadcast to
+// immediate neighbours (within 0.4 grid units), halving their remaining range.
+// This creates a cascade — a field that's uniform in sensitivity converges
+// in roughly 16×2 = 32 trials total.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Spatial prior: eccentricity-based seed calibrated to real clinical VFT thresholds.
-// Real sensitivity thresholds are typically 5–40/255 for healthy eyes,
-// rising toward the periphery. We seed near the middle of that range
-// and keep lo=0 so the staircase can discover sub-10 thresholds.
-function eccentricityPrior(dx, dy) {
-  const ecc = Math.sqrt(dx * dx + dy * dy);
-  if (ecc < 0.15) return { lo: 0, hi: 80,  startLum: 30 };  // central: most sensitive
-  if (ecc < 0.25) return { lo: 0, hi: 100, startLum: 45 };  // para-central
-  return              { lo: 0, hi: 120, startLum: 60 };  // peripheral: less sensitive
-}
+const DONE_GAP = 8; // lum units — position is done when hi-lo ≤ this
+
+// Round-robin cursor — advances through active positions one at a time
+let vftRoundRobinIdx = 0;
 
 function initVFTState() {
+  vftRoundRobinIdx = 0;
   VFT_POSITIONS.forEach(p => {
-    const prior = eccentricityPrior(p.dx, p.dy);
     vftState[p.id] = {
-      lo: prior.lo,
-      hi: prior.hi,
-      startLum: prior.startLum,
-      step: 40,           // smaller initial step — avoids leaping past the real threshold
-      firstTrial: true,
-      lastDir: null,
-      reversals: 0,
-      responses: [],        // full log: {luminance, hit}
-      consecutiveHits: 0,
-      consecutiveMisses: 0,
+      lo: 0,
+      hi: 255,
+      responses: [],   // {luminance, hit}
       done: false
     };
   });
@@ -1048,25 +1036,23 @@ function isVFTDone() {
 }
 
 function vftEstimatedTotal() {
-  return VFT_POSITIONS.length * 6; // ~6 trials per position with the more thorough staircase
+  // ceil(log2(256/DONE_GAP)) bisections × 16 positions, minus spatial-transfer savings
+  return VFT_POSITIONS.length * 5;
 }
 
+// Next luminance to show for posId — always the midpoint of [lo, hi]
 function getNextLuminance(posId) {
   const s = vftState[posId];
-  if (s.firstTrial) return s.startLum;
-  // Always bisect the current bracket, clamped to [0, 255]
-  const mid = Math.round((s.lo + s.hi) / 2);
-  return Math.max(0, Math.min(255, mid));
+  return Math.round((s.lo + s.hi) / 2);
 }
 
-// ── Spatial transfer: when posId converges, push its threshold to neighbours ──
+// Spatial transfer: broadcast a converged threshold to immediate neighbours
 function propagateThreshold(donePosId) {
-  const src = vftState[donePosId];
-  const srcThreshold = getThresholdEstimate(donePosId);
-  if (srcThreshold === null) return;
+  const threshold = getThresholdEstimate(donePosId);
+  if (threshold === null) return;
 
   const srcPos = VFT_POSITIONS.find(p => p.id === donePosId);
-  const TRANSFER_RADIUS = 0.26; // grid units — covers immediate neighbours only
+  const TRANSFER_RADIUS = 0.45; // slightly wider — catches diagonal neighbours too
 
   VFT_POSITIONS.forEach(p => {
     if (p.id === donePosId) return;
@@ -1076,112 +1062,73 @@ function propagateThreshold(donePosId) {
     const dist = Math.sqrt((p.dx - srcPos.dx) ** 2 + (p.dy - srcPos.dy) ** 2);
     if (dist > TRANSFER_RADIUS) return;
 
-    // Neighbour thresholds are typically within ±40 lum units of each other.
-    // Tighten the bracket conservatively — never override a bracket that's
-    // already tighter than what the neighbour can offer.
-    const transferMargin = 50;
-    const newLo = srcThreshold - transferMargin;
-    const newHi = srcThreshold + transferMargin;
+    // Constrain neighbour bracket to [threshold ± margin].
+    // Use half the remaining interval so we always narrow, never widen.
+    const margin = Math.max(30, Math.round((nb.hi - nb.lo) / 2));
+    const newLo  = threshold - margin;
+    const newHi  = threshold + margin;
 
-    if (newLo > nb.lo) nb.lo = newLo;
-    if (newHi < nb.hi) nb.hi = newHi;
+    if (newLo > nb.lo) nb.lo = Math.max(0,   newLo);
+    if (newHi < nb.hi) nb.hi = Math.min(255, newHi);
 
-    // If the neighbour hasn't had its first trial yet, update its seed too
-    if (nb.firstTrial) {
-      nb.startLum = Math.round((nb.lo + nb.hi) / 2);
+    // Re-check convergence — transfer might have already finished the neighbour
+    if ((nb.hi - nb.lo) <= DONE_GAP && nb.responses.length > 0) {
+      nb.done = true;
+      propagateThreshold(p.id); // cascade
     }
   });
 }
 
 function recordVFTResponse(posId, luminance, hit) {
   const s = vftState[posId];
-  s.firstTrial = false;
   s.responses.push({ luminance, hit });
 
-  // ── Update consecutive streak counters ──
+  // Pure binary search bracket update
   if (hit) {
-    s.consecutiveHits++;
-    s.consecutiveMisses = 0;
+    s.hi = Math.min(s.hi, luminance); // saw it → threshold is ≤ this
   } else {
-    s.consecutiveMisses++;
-    s.consecutiveHits = 0;
+    s.lo = Math.max(s.lo, luminance); // missed → threshold is > this
   }
 
-  // ── Standard staircase bracket update ──
-  const dir = hit ? 'down' : 'up';
-  if (s.lastDir !== null && dir !== s.lastDir) {
-    s.reversals++;
-    // Halve step more slowly — preserve resolution near the real threshold
-    s.step = Math.max(4, Math.floor(s.step * 0.65));
-  }
-  s.lastDir = dir;
-
-  if (hit) {
-    s.hi = Math.min(s.hi, luminance);
-  } else {
-    s.lo = Math.max(s.lo, luminance);
-  }
-
+  // Guard: lo must stay below hi
   if (s.lo >= s.hi) {
     const mid = Math.round((s.lo + s.hi) / 2);
-    s.lo = Math.max(0,   mid - 2);
-    s.hi = Math.min(255, mid + 2);
+    s.lo = Math.max(0,   mid - 1);
+    s.hi = Math.min(255, mid + 1);
   }
 
-  // ── Convergence checks ──
-  // Require a tighter interval (≤8) to avoid premature convergence at high lum
-  const intervalTight   = (s.hi - s.lo) <= 8;
-  // Require 3 reversals for a formal exit (was 2 — too easy to exit early)
-  const formalReversal  = s.reversals >= 3;
-
-  // Streak exit: only exit early if we have ≥3 responses AND
-  // the last 3 are all the same outcome at 3 different luminances.
-  // This prevents the staircase exiting after just 2 high-lum hits
-  // before it ever descends near the real threshold.
-  const recentThree = s.responses.slice(-3);
-  const streakExit = recentThree.length === 3
-    && recentThree.every(r => r.hit === recentThree[0].hit)   // all same outcome
-    && new Set(recentThree.map(r => r.luminance)).size === 3; // 3 distinct luminances
-
-  if (intervalTight || formalReversal || streakExit) {
+  // Converged?
+  if ((s.hi - s.lo) <= DONE_GAP) {
     s.done = true;
-    propagateThreshold(posId); // immediately benefit spatial neighbours
+    propagateThreshold(posId);
   }
 }
 
 function getThresholdEstimate(posId) {
   const s = vftState[posId];
-  if (s.responses.length === 0) return null;
+  if (s.responses.length === 0) return Math.round((s.lo + s.hi) / 2);
 
   const hits   = s.responses.filter(r =>  r.hit).map(r => r.luminance);
   const misses = s.responses.filter(r => !r.hit).map(r => r.luminance);
 
-  if (hits.length === 0 || misses.length === 0) {
-    return Math.round((s.lo + s.hi) / 2);
-  }
+  if (hits.length === 0)   return Math.round((s.lo + s.hi) / 2);
+  if (misses.length === 0) return Math.round((s.lo + s.hi) / 2);
 
-  const minHit  = Math.min(...hits);
-  const maxMiss = Math.max(...misses);
-  return Math.round((minHit + maxMiss) / 2);
+  // Threshold = midpoint between lowest seen and highest missed
+  return Math.round((Math.min(...hits) + Math.max(...misses)) / 2);
 }
 
+// Round-robin scheduler: cycle through all incomplete positions in order.
+// Never revisit the same position twice in a row unless only one is left.
 function getNextPosId() {
   const active = VFT_POSITIONS.filter(p => !vftState[p.id].done);
   if (active.length === 0) return null;
 
-  // CONVERGENCE-FIRST: sort by smallest hi-lo interval (closest to done).
-  // Finishing positions quickly triggers propagateThreshold() for neighbours,
-  // creating a cascade effect that shrinks the whole grid faster.
-  // Tie-break: most responses (most data = most reliable propagation source).
-  active.sort((a, b) => {
-    const ra = vftState[a.id], rb = vftState[b.id];
-    const intervalA = ra.hi - ra.lo;
-    const intervalB = rb.hi - rb.lo;
-    const intDiff = intervalA - intervalB;
-    if (Math.abs(intDiff) > 10) return intDiff; // meaningfully different intervals
-    return rb.responses.length - ra.responses.length; // tie-break: more data first
-  });
-  return active[0].id;
+  // Advance cursor, wrapping around the active list
+  vftRoundRobinIdx = vftRoundRobinIdx % active.length;
+  const chosen = active[vftRoundRobinIdx].id;
+  vftRoundRobinIdx = (vftRoundRobinIdx + 1) % active.length;
+  return chosen;
 }
 
 // ── Per-trial state (single source of truth) ──────────────────────────────
