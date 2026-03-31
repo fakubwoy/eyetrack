@@ -576,7 +576,11 @@ function connectWS() {
   ws.onopen = () => {
     wsConnected = true;
     document.getElementById('connDot').className = 'ok';
-    sendScreenMetrics();
+    // Send a lightweight presence ping immediately so the doctor overlay
+    // drops as soon as the WebSocket connects — even before camera/ML is ready.
+    // session_start (with full context) is sent by boot() once MediaPipe is
+    // initialised, so we deliberately do NOT send it here to avoid duplicates.
+    sendGazeData({ type: 'heartbeat', ts: Date.now() });
   };
   ws.onmessage = async (e) => {
     // Boilerplate for future 2-way data flow if needed
@@ -597,6 +601,12 @@ function connectWS() {
   };
 }
 connectWS();
+
+// Periodic heartbeat: wakes up a doctor that connects *after* the patient's
+// initial session_start has already fired (the most common race condition).
+setInterval(() => {
+  if (wsConnected) sendGazeData({ type: 'heartbeat', ts: Date.now() });
+}, 2000);
 
 function sendGazeData(payload) {
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -741,7 +751,7 @@ function collectBaseline(iL, iR, yaw, pitch, fw, iLv, iRv) {
     document.getElementById('baselineBtn').style.borderColor = 'var(--accent)';
     document.getElementById('baselineBtn').style.color = 'var(--accent)';
     document.getElementById('baselineProgress').style.background = 'var(--accent)';
-    if (!sessionStart) { sessionStart = Date.now(); setInterval(updateStats, 1000); }
+    if (!sessionStart) { sessionStart = Date.now(); if (!window._statsInterval) window._statsInterval = setInterval(updateStats, 1000); }
     sendGazeData({ type: 'baseline_created', ts: Date.now() });
 
     if (activeEye !== null) {
@@ -937,11 +947,6 @@ async function loop() {
     }
   } catch(e) { /* silent */ }
 
-  if (lastTick && lastState && baselineComplete) {
-    const dt = Date.now() - lastTick;
-    if (lastState === 'c') centerMs += dt;
-    if (lastState === 'o') offMs += dt;
-  }
   lastTick = Date.now();
   requestAnimationFrame(loop);
 }
@@ -1212,7 +1217,9 @@ function finalizeTrial(trialId, hit) {
   drawVFTScene(null, 0);  // always clear the dot
 
   if (isVFTDone()) {
-    endVFT();
+    // Small pause so the screen clears and the patient isn't
+    // abruptly thrown into the completion screen mid-response.
+    setTimeout(endVFT, 600);
   } else {
     scheduleNextVFTTrial();
   }
@@ -1568,7 +1575,7 @@ function selectEye(eye) {
     document.getElementById('baselineProgress').style.background = '';
     document.getElementById('baselineProgress').style.width = '0%';
     document.getElementById('baselinePrompt').classList.add('show');
-    sendGazeData({ type: 'baseline_start', ts: Date.now(), eye });
+    // startBaselineCreation() sends baseline_start — don't send it here too
     setTimeout(() => startBaselineCreation(), 1000);
   }
 }

@@ -697,7 +697,7 @@
 // ===== CENTERGAZE DOCTOR APP (ENHANCED) =====
 
 let tlHistory = [];
-let lastPatientTs = 0;
+let lastPatientTs = Date.now();
 let patientOnline = false;
 let vftTrialCount = 0;
 let vftTotalTrials = 0;
@@ -836,6 +836,11 @@ function handleMessage(d) {
   if (d.type === 'session_start') {
     setPatientStatus('active', 'Patient joined');
     addAlert('Patient session started', 'i');
+  }
+
+  if (d.type === 'heartbeat') {
+    // Silent keep-alive — overlay is already hidden by the patientOnline block above
+    if (!patientOnline) setPatientStatus('active', 'Patient connected');
   }
 
   if (d.type === 'baseline_start') {
