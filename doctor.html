@@ -799,6 +799,7 @@ connectWS();
 
 // Patient heartbeat watchdog
 setInterval(() => {
+  if (isReplaying) return; // don't fire during catch-up replay
   if (patientOnline && Date.now() - lastPatientTs > 4000) {
     patientOnline = false;
     setPatientStatus('offline', '—');
@@ -821,10 +822,31 @@ const ARROWS = {
   'down-left': { sym: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17"/><path d="M17 7H7v10"/></svg>', label: 'Down-Left' },
 };
 
+let isReplaying = false;
+
 function handleMessage(d) {
   lastPatientTs = Date.now();
 
-  if (!patientOnline) {
+  // ── Replay envelope markers ───────────────────────────────────────────────
+  // Server sends these when flushing the session buffer to a late-joining doctor.
+  if (d.type === '_replay_start') {
+    isReplaying = true;
+    // Show the main grid immediately so replayed events can render into it
+    document.getElementById('waitOverlay').classList.add('hidden');
+    document.getElementById('mainGrid').classList.remove('hidden');
+    addAlert(`⏪ Replaying ${d.count} buffered events from this session…`, 'i');
+    return;
+  }
+  if (d.type === '_replay_end') {
+    isReplaying = false;
+    const stillOnline = document.getElementById('connLabel').textContent.includes('Patient online');
+    addAlert(stillOnline ? '▶ Caught up — now live' : '⏹ Replay complete — patient is no longer connected', 'i');
+    return;
+  }
+
+  // During replay, suppress the "patient just connected" banner — we're catching
+  // up on history, not receiving a live join event.
+  if (!isReplaying && !patientOnline) {
     patientOnline = true;
     document.getElementById('waitOverlay').classList.add('hidden');
     document.getElementById('mainGrid').classList.remove('hidden');

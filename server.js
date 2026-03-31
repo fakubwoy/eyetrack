@@ -685,12 +685,31 @@ const server = http.createServer(async (req, res) => {
 
 // ── WebSocket relay ────────────────────────────────────────────────────────────
 // Each doctor has their own room. Only their authorised patient can join.
-// rooms[doctorId] = { doctors: Set<ws>, patient: ws|null, invToken: string|null }
+// rooms[doctorId] = {
+//   doctors:  Set<ws>,
+//   patient:  ws|null,
+//   invToken: string|null,
+//   buffer:   Array<string>   ← session buffer: replayed to any doctor that connects late
+// }
 const rooms = {};
 function getRoom(doctorId) {
-  if (!rooms[doctorId]) rooms[doctorId] = { doctors: new Set(), patient: null, invToken: null };
+  if (!rooms[doctorId]) rooms[doctorId] = { doctors: new Set(), patient: null, invToken: null, buffer: [] };
   return rooms[doctorId];
 }
+
+// Message types worth buffering (not high-frequency gaze noise).
+// A doctor opening the monitor late will receive all of these in order,
+// reconstructing the full test state as if they had been watching from the start.
+const BUFFER_TYPES = new Set([
+  'session_start', 'screen_metrics',
+  'baseline_start', 'baseline_created', 'baseline_reused',
+  'eye_selected',
+  'vft_start', 'vft_stim', 'vft_response', 'vft_complete', 'vft_both_complete', 'vft_aborted',
+  'stats',
+  'patient_disconnected'
+]);
+// Hard cap so a very long test can't grow the buffer unboundedly.
+const BUFFER_MAX = 2000;
 
 if (WebSocketServer) {
   const wss = new WebSocketServer({ server, maxPayload: MAX_MESSAGE_BYTES });
@@ -712,7 +731,24 @@ if (WebSocketServer) {
       const room = getRoom(d.id);
       if (room.doctors.size >= 5) { ws.close(1008, 'Limit'); return; }
       room.doctors.add(ws);
-      console.log(`[WS] +doctor(${d.name}) room=${d.id} docs=${room.doctors.size}`);
+      console.log(`[WS] +doctor(${d.name}) room=${d.id} docs=${room.doctors.size} buf=${room.buffer.length}`);
+
+      // ── Replay buffered session data ──────────────────────────────────────
+      // If the patient is already mid-test (or the test already finished) when
+      // the doctor opens the monitor, flush the entire buffer in order so the
+      // doctor UI can reconstruct exactly what happened so far.
+      if (room.buffer.length > 0) {
+        // Prepend a synthetic marker so doctor.js can show a "catch-up replay" notice
+        const catchupHeader = JSON.stringify({ type: '_replay_start', count: room.buffer.length, ts: Date.now() });
+        if (ws.readyState === 1) ws.send(catchupHeader);
+        for (const msg of room.buffer) {
+          if (ws.readyState !== 1) break;
+          ws.send(msg);
+        }
+        const catchupFooter = JSON.stringify({ type: '_replay_end', ts: Date.now() });
+        if (ws.readyState === 1) ws.send(catchupFooter);
+        console.log(`[WS] replayed ${room.buffer.length} buffered messages to doctor(${d.name})`);
+      }
 
       ws.on('close', () => { room.doctors.delete(ws); console.log(`[WS] -doctor(${d.name})`); });
       ws.on('error', err => { console.error('[WS] doctor error:', err.message); room.doctors.delete(ws); });
@@ -739,6 +775,10 @@ if (WebSocketServer) {
       await query('UPDATE invitations SET status=$1, used_at=$2 WHERE token=$3', ['active', Date.now(), token]);
       inv.status = 'active';
 
+      // Clear any buffer from a previous session so a reconnecting patient
+      // or a new patient for the same doctor starts with a clean slate.
+      room.buffer = [];
+
       // Track whether the test completed during this WS session
       let testCompleted = false;
 
@@ -750,10 +790,17 @@ if (WebSocketServer) {
         const payload = isBinary ? raw : raw.toString('utf8');
 
         // FIX 2: Listen for the completion signal so we know the test truly finished
+        // Also buffer important messages so a doctor joining late gets full replay
         try {
           const msg = JSON.parse(isBinary ? raw.toString('utf8') : raw.toString('utf8'));
           if (msg.type === 'vft_both_complete') {
             testCompleted = true;
+          }
+          // Buffer this message if it's a meaningful test event (not noisy gaze frames)
+          if (BUFFER_TYPES.has(msg.type)) {
+            if (room.buffer.length < BUFFER_MAX) {
+              room.buffer.push(typeof payload === 'string' ? payload : payload.toString('utf8'));
+            }
           }
         } catch(e) { /* non-JSON frames are fine */ }
 
@@ -773,6 +820,8 @@ if (WebSocketServer) {
             // Test finished normally — seal the session as 'used'
             await query('UPDATE invitations SET status=$1 WHERE token=$2', ['used', token]);
             inv.status = 'used';
+            // Keep buffer intact: doctor may still open the monitor after the
+            // session ends to review exactly what happened.
             console.log(`[WS] -patient(${inv.patientName}) — session completed`);
           } else {
             // FIX 2: Patient disconnected mid-test (refresh, crash, closed tab).
@@ -780,8 +829,10 @@ if (WebSocketServer) {
             await query('UPDATE invitations SET status=$1 WHERE token=$2', ['pending', token]);
             inv.status = 'pending';
             console.log(`[WS] -patient(${inv.patientName}) — disconnected before completion, reset to pending`);
-            // Notify doctor that patient dropped so they're not left staring at a frozen screen
+            // Notify doctor that patient dropped so they're not left staring at a frozen screen.
+            // Also push to buffer so a doctor who wasn't watching sees the drop event on connect.
             const dropMsg = JSON.stringify({ type: 'patient_disconnected', ts: Date.now() });
+            room.buffer.push(dropMsg);
             for (const doc of room.doctors) {
               if (doc.readyState === 1) doc.send(dropMsg);
             }
