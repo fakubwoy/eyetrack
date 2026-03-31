@@ -571,7 +571,7 @@
       </div>
 
       <!-- Dual-eye threshold grid (4 positions × 2 eyes) -->
-      <div style="font-size:9px;color:var(--muted);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;">Sensitivity thresholds (0–255)</div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;">Sensitivity thresholds (0–255 · lower = better)</div>
       <div class="dual-thresh-grid">
         <div class="dual-thresh-cell">
           <div class="dual-thresh-pos">Top-Left</div>
@@ -706,7 +706,9 @@ let vftLastTrialLog = [];
 let vftLastThresholds = {};    
 let vftCumulativeLog = [];     
 let vftEyeThresholds = { left: {}, right: {} }; 
-let currentTestEye = null;     
+let currentTestEye = null;
+let currentSessionToken = null;   // set from session_start message
+let gazeSessionStats = null;       // collected from stats messages
 
 // All 16 position IDs in grid order (row-major, top-left → bottom-right)
 const VFT_ALL_IDS = [
@@ -858,6 +860,8 @@ function handleMessage(d) {
   if (d.type === 'session_start') {
     setPatientStatus('active', 'Patient joined');
     addAlert('Patient session started', 'i');
+    if (d.token) currentSessionToken = d.token;
+    gazeSessionStats = null;
   }
 
   if (d.type === 'heartbeat') {
@@ -882,6 +886,16 @@ function handleMessage(d) {
 
   if (d.type === 'gaze') {
     updateDashboard(d);
+    // Keep the latest gaze stats snapshot for the session summary
+    if (d.sessionMs !== undefined) {
+      const sessionSec = Math.round(d.sessionMs / 1000);
+      gazeSessionStats = {
+        sessionSec,
+        focusPct: d.sessionMs ? Math.round(d.centerMs / d.sessionMs * 100) : 0,
+        awayPct:  d.sessionMs ? Math.round(d.offMs   / d.sessionMs * 100) : 0,
+        alerts:   d.alerts || 0,
+      };
+    }
   }
 
   // ===== Eye selection event =====
@@ -898,6 +912,16 @@ function handleMessage(d) {
 
   if (d.type === 'baseline_reused') {
     addAlert(`Reusing stored baseline for ${d.eye} eye`, 'i');
+  }
+
+  if (d.type === 'stats') {
+    const tot = (d.sessionSec || 0) * 1000;
+    gazeSessionStats = {
+      sessionSec: d.sessionSec || 0,
+      focusPct: tot ? Math.round((d.centerMs / tot) * 100) : 0,
+      awayPct:  tot ? Math.round((d.offMs    / tot) * 100) : 0,
+      alerts:   d.alerts || 0,
+    };
   }
 
   // ===== VFT events =====
@@ -1011,6 +1035,28 @@ function handleMessage(d) {
     document.getElementById('vftStatusLabel').innerHTML = `Both eyes complete ${checkSvg}`;
     document.getElementById('vftLiveLog').textContent = 'Both eyes tested. Download combined CSV below.';
     addAlert('Both eyes complete — combined CSV available for download', 'c');
+
+    // Save the session summary to the server for future retrieval
+    if (currentSessionToken) {
+      const summaryPayload = {
+        gazeStats: gazeSessionStats || null,
+        vftData: {
+          totalTrials: vftCumulativeLog.length,
+          eyeThresholds: JSON.parse(JSON.stringify(vftEyeThresholds)),
+          trialLog: vftCumulativeLog,
+        }
+      };
+      fetch('/api/sessions/' + currentSessionToken + '/summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(summaryPayload)
+      }).then(r => r.json()).then(j => {
+        if (j.ok) addAlert('Session summary saved to server ✓', 'c');
+        else addAlert('Warning: could not save summary — ' + (j.error || 'unknown error'), 'o');
+      }).catch(() => addAlert('Warning: could not save session summary (network error)', 'o'));
+    } else {
+      addAlert('Note: session token not available — summary not saved to server', 'l');
+    }
   }
 
   if (d.type === 'vft_aborted') {
@@ -1064,88 +1110,214 @@ function updateDualEyeThresholds(eye, thresholds) {
     const labelEl = document.getElementById('dth' + pos + suffix);
     const fillEl  = document.getElementById('dthFill' + pos + suffix);
     if (labelEl) labelEl.textContent = val + '/255';
-    if (fillEl)  fillEl.style.width = ((val / 255) * 100) + '%';
+    // Invert: low threshold = better sensitivity = fuller bar
+    if (fillEl)  fillEl.style.width = (((255 - val) / 255) * 100) + '%';
   });
 }
 
 function downloadVFTCSV(mode) {
   const isCombined = mode === 'combined';
   const log = isCombined ? vftCumulativeLog : vftLastTrialLog;
-  const thresholds = isCombined ? null : vftLastThresholds;
 
   if (!log || log.length === 0) {
     alert('No trial data available yet.');
     return;
   }
 
+  // ── Helpers ──────────────────────────────────────────────────────────────
   const escape = v => {
     const s = String(v === null || v === undefined ? '' : v);
     return s.includes(',') || s.includes('"') || s.includes('\n')
       ? `"${s.replace(/"/g, '""')}"` : s;
   };
+  const row = cols => cols.map(escape).join(',');
+  const blank = () => '';
 
-  // Build header — combined CSV includes Eye column
-  const headers = [
-    'Trial #',
-    'Eye',
-    'Position ID',
-    'Position Label',
-    'Offset X (fraction of screen)',
-    'Offset Y (fraction of screen)',
-    'Luminance (0-255)',
-    'Seen (1=yes / 0=no)',
-    'Reaction Time (ms)',
-    'Timestamp (ms)'
-  ];
-
-  const rows = log.map(r => [
-    r.trial_number,
-    r.eye || '',
-    r.position_id,
-    r.position_label,
-    r.dx,
-    r.dy,
-    r.luminance,
-    r.seen,
-    r.rt_ms,
-    r.timestamp_ms
-  ].map(escape).join(','));
-
-  // Threshold summary rows — use all 16 positions
-  const threshLines = [];
-  if (isCombined) {
-    ['left','right'].forEach(eye => {
-      const th = vftEyeThresholds[eye];
-      if (!th || Object.keys(th).length === 0) return;
-      Object.entries(th).forEach(([id, val]) => {
-        threshLines.push(`,,FINAL THRESHOLD [${eye.toUpperCase()}] — ${id},,,,${val !== null && val !== undefined ? val : '?'},,`);
-      });
-    });
-  } else if (thresholds) {
-    Object.entries(thresholds).forEach(([id, val]) => {
-      threshLines.push(`,,FINAL THRESHOLD — ${id},,,,${val !== null && val !== undefined ? val : '?'},,`);
-    });
+  // Convert the internal dx/dy fractions into a plain English field location.
+  // dx: negative = left, positive = right  |  dy: negative = up, positive = down
+  // Magnitude buckets: ≤0.15 = "Central", >0.15 = "Peripheral"
+  function fieldLocation(dx, dy) {
+    const hLabel = dx < -0.15 ? 'Left'  : dx > 0.15 ? 'Right' : 'Central';
+    const vLabel = dy < -0.15 ? 'Upper' : dy > 0.15 ? 'Lower' : 'Central';
+    if (vLabel === 'Central' && hLabel === 'Central') return 'Centre';
+    if (vLabel === 'Central') return hLabel;
+    if (hLabel === 'Central') return vLabel;
+    return `${vLabel}-${hLabel}`;
   }
 
-  const csv = [
-    '# CenterGaze Visual Field Test Export',
-    `# Generated: ${new Date().toISOString()}`,
-    `# Mode: ${isCombined ? 'Both Eyes (Combined)' : 'Single Eye'}`,
-    `# Total trials: ${log.length}`,
-    '',
-    headers.map(escape).join(','),
-    ...rows,
-    '',
-    '# Final Thresholds (0-255 scale  higher = better sensitivity)',
-    ...threshLines
-  ].join('\r\n');
+  // Threshold interpretation: LOWER threshold = patient detected a DIMMER stimulus = BETTER sensitivity.
+  function sensitivityLabel(val) {
+    if (val === null || val === undefined) return 'Not tested';
+    if (val <= 60)  return 'High sensitivity (excellent)';
+    if (val <= 120) return 'Normal sensitivity';
+    if (val <= 180) return 'Reduced sensitivity';
+    return 'Very low sensitivity (dim stimuli not detected)';
+  }
 
+  // Derive which positions were actually tested (appeared in the trial log)
+  const testedPositions = {};
+  log.forEach(r => {
+    const key = `${r.eye || 'both'}::${r.position_id}`;
+    if (!testedPositions[key]) testedPositions[key] = { eye: r.eye || 'both', posId: r.position_id, trials: 0, hits: 0, dx: r.dx, dy: r.dy };
+    testedPositions[key].trials++;
+    if (r.seen) testedPositions[key].hits++;
+  });
+
+  // Build per-eye threshold maps from vftEyeThresholds (only positions that were tested)
+  function getThreshForEye(eye) {
+    const th = (eye === 'left' || eye === 'right') ? vftEyeThresholds[eye] : vftLastThresholds;
+    return th && Object.keys(th).length > 0 ? th : null;
+  }
+
+  // ASCII 2×2 quadrant grid showing average threshold per quadrant
+  // Quadrant positions: TL=upper-left, TR=upper-right, BL=lower-left, BR=lower-right
+  const QUAD_MAP = { R1C1:'TL',R1C2:'TL',R2C1:'TL',R2C2:'TL', R1C3:'TR',R1C4:'TR',R2C3:'TR',R2C4:'TR', R3C1:'BL',R3C2:'BL',R4C1:'BL',R4C2:'BL', R3C3:'BR',R3C4:'BR',R4C3:'BR',R4C4:'BR' };
+
+  function buildQuadrantSummary(eye) {
+    const th = getThreshForEye(eye);
+    if (!th) return [];
+    const quadVals = { TL:[], TR:[], BL:[], BR:[] };
+    Object.entries(th).forEach(([posId, val]) => {
+      // Only include positions that were actually tested
+      const key = `${eye}::${posId}`;
+      const altKey = `both::${posId}`;
+      if (!testedPositions[key] && !testedPositions[altKey]) return;
+      const q = QUAD_MAP[posId];
+      if (q && val !== null && val !== undefined) quadVals[q].push(val);
+    });
+    const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
+    const tl = avg(quadVals.TL), tr = avg(quadVals.TR), bl = avg(quadVals.BL), br = avg(quadVals.BR);
+    const fmt = v => v !== null ? String(v).padStart(3) : ' — ';
+    const eyeLabel = eye === 'left' ? 'LEFT EYE' : eye === 'right' ? 'RIGHT EYE' : 'COMBINED';
+    return [
+      `# Quadrant Summary — ${eyeLabel}  (threshold 0-255 · lower = better sensitivity)`,
+      `#`,
+      `#               LEFT FIELD    |    RIGHT FIELD`,
+      `#  UPPER  :    ${fmt(tl)}           |         ${fmt(tr)}`,
+      `#  LOWER  :    ${fmt(bl)}           |         ${fmt(br)}`,
+      `#`,
+      `# Interpretation: ${sensitivityLabel(tl)} (upper-left) · ${sensitivityLabel(tr)} (upper-right)`,
+      `#                 ${sensitivityLabel(bl)} (lower-left) · ${sensitivityLabel(br)} (lower-right)`,
+    ];
+  }
+
+  // ── Section 1: Report header ─────────────────────────────────────────────
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+  const timeStr = now.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+  const eyesTested = isCombined ? 'Both eyes (Left + Right)' : (currentTestEye ? currentTestEye.charAt(0).toUpperCase() + currentTestEye.slice(1) + ' eye only' : 'Single eye');
+
+  const lines = [
+    `# ═══════════════════════════════════════════════════════════════════`,
+    `# CenterGaze — Visual Field Test Report`,
+    `# ───────────────────────────────────────────────────────────────────`,
+    `# Date / Time  : ${dateStr}  ${timeStr}`,
+    `# Eyes tested  : ${eyesTested}`,
+    `# Total trials : ${log.length}`,
+    `# ───────────────────────────────────────────────────────────────────`,
+    `# THRESHOLD SCALE  (0 – 255)`,
+    `#   Lower value = patient detected a DIMMER stimulus = BETTER sensitivity`,
+    `#   0–60   → High sensitivity (excellent)`,
+    `#   61–120 → Normal sensitivity`,
+    `#   121–180 → Reduced sensitivity`,
+    `#   181–255 → Very low sensitivity`,
+    `# ═══════════════════════════════════════════════════════════════════`,
+    blank(),
+  ];
+
+  // ── Section 2: Quadrant summaries ────────────────────────────────────────
+  if (isCombined) {
+    ['left','right'].forEach(eye => {
+      lines.push(...buildQuadrantSummary(eye));
+      lines.push(blank());
+    });
+  } else {
+    lines.push(...buildQuadrantSummary(currentTestEye || 'both'));
+    lines.push(blank());
+  }
+
+  // ── Section 3: Per-position threshold summary (tested positions only) ────
+  function buildPositionSummary(eye) {
+    const th = getThreshForEye(eye);
+    if (!th) return [];
+    const eyeLabel = eye === 'left' ? 'LEFT EYE' : eye === 'right' ? 'RIGHT EYE' : 'COMBINED';
+    const out = [
+      `# ─── Position Thresholds — ${eyeLabel} ────────────────────────────────`,
+      row(['Location', 'Position ID', 'Eye', 'Threshold (0-255)', 'Sensitivity', 'Trials Run', 'Hit Rate']),
+    ];
+    // Only emit rows for positions that appear in the trial log
+    const posOrder = ['R1C1','R1C2','R1C3','R1C4','R2C1','R2C2','R2C3','R2C4','R3C1','R3C2','R3C3','R3C4','R4C1','R4C2','R4C3','R4C4'];
+    posOrder.forEach(posId => {
+      const key = `${eye}::${posId}`;
+      const altKey = `both::${posId}`;
+      const info = testedPositions[key] || testedPositions[altKey];
+      if (!info) return; // not tested — skip entirely
+      const val = th[posId];
+      const hitRate = info.trials > 0 ? `${info.hits}/${info.trials} (${Math.round(info.hits/info.trials*100)}%)` : '—';
+      out.push(row([
+        fieldLocation(info.dx, info.dy),
+        posId,
+        eye,
+        val !== null && val !== undefined ? val : '—',
+        sensitivityLabel(val),
+        info.trials,
+        hitRate
+      ]));
+    });
+    return out;
+  }
+
+  if (isCombined) {
+    ['left','right'].forEach(eye => {
+      lines.push(...buildPositionSummary(eye));
+      lines.push(blank());
+    });
+  } else {
+    lines.push(...buildPositionSummary(currentTestEye || 'both'));
+    lines.push(blank());
+  }
+
+  // ── Section 4: Trial-by-trial log ────────────────────────────────────────
+  lines.push(
+    `# ─── Trial Log ──────────────────────────────────────────────────────`,
+    `# Each row is one stimulus presentation. Reaction time only recorded on SEEN trials.`,
+    row([
+      'Trial #',
+      'Eye',
+      'Visual Field Location',
+      'Position ID',
+      'Luminance Tested (0-255)',
+      'Result',
+      'Reaction Time (ms)',
+      'Time into Session (s)'
+    ])
+  );
+
+  // Compute session start time from the first trial's timestamp
+  const sessionStartMs = log.length > 0 ? log[0].timestamp_ms : Date.now();
+
+  log.forEach(r => {
+    const elapsed = r.timestamp_ms && sessionStartMs ? Math.round((r.timestamp_ms - sessionStartMs) / 1000) : '';
+    lines.push(row([
+      r.trial_number,
+      r.eye ? (r.eye.charAt(0).toUpperCase() + r.eye.slice(1)) : '—',
+      fieldLocation(r.dx, r.dy),
+      r.position_id,
+      r.luminance,
+      r.seen ? 'SEEN' : 'MISSED',
+      r.seen && r.rt_ms ? r.rt_ms : '—',
+      elapsed
+    ]));
+  });
+
+  // ── Assemble & download ───────────────────────────────────────────────────
+  const csv = lines.join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const ts   = now.toISOString().replace(/[:.]/g, '-').slice(0, 16);
   a.href     = url;
-  a.download = `centergaze_vft_${isCombined ? 'combined' : (currentTestEye || 'eye')}_${ts}.csv`;
+  a.download = `centergaze_vft_${isCombined ? 'both-eyes' : (currentTestEye || 'eye')}_${ts}.csv`;
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);

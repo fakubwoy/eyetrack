@@ -63,6 +63,18 @@ async function initDB() {
     await query(`ALTER TABLE invitations ADD COLUMN IF NOT EXISTS started_at BIGINT`);
   } catch(e) { /* column already exists */ }
 
+  await query(`
+    CREATE TABLE IF NOT EXISTS session_summaries (
+      token         TEXT PRIMARY KEY REFERENCES invitations(token) ON DELETE CASCADE,
+      doctor_id     TEXT NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+      patient_name  TEXT NOT NULL,
+      note          TEXT NOT NULL DEFAULT '',
+      completed_at  BIGINT NOT NULL,
+      gaze_stats    JSONB,
+      vft_data      JSONB
+    )
+  `);
+
   // FIX 7: On restart, any invitation still 'active' means the server crashed
   // mid-session. Reset them back to 'pending' so the patient can reconnect.
   const stale = await query(
@@ -220,7 +232,7 @@ async function doSignup(e){
 </html>`;
 
 // ── Sessions dashboard ─────────────────────────────────────────────────────────
-function buildDashboardHTML(doctor, invitations, origin) {
+function buildDashboardHTML(doctor, invitations, origin, summaries) {
   const pending = invitations.filter(i => i.status === 'pending');
   const active  = invitations.filter(i => i.status === 'active');
   const used    = invitations.filter(i => i.status === 'used').slice(-10).reverse();
@@ -278,6 +290,27 @@ function buildDashboardHTML(doctor, invitations, origin) {
         <div class="inv-meta" style="margin-top:2px">Revoked ${timeAgo(inv.createdAt)}</div>
       </div>
       <span class="inv-status" style="color:var(--muted);background:transparent;border:1px solid var(--border)" id="status_${inv.token}" data-status="revoked">Revoked</span>
+    </div>`;
+  }
+
+  function summaryCard(s) {
+    const date = new Date(Number(s.completed_at));
+    const dateStr = date.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+    const timeStr = date.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+    return `<div class="inv-item">
+      <div style="flex:1;min-width:0">
+        <div class="inv-name">${escapeHtml(s.patient_name)}</div>
+        ${s.note ? `<div class="inv-meta" style="margin-top:2px">${escapeHtml(s.note)}</div>` : ''}
+        <div class="inv-meta" style="margin-top:2px">${dateStr} at ${timeStr}</div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          ${s.has_gaze ? '<span class="data-chip gaze">Gaze stats</span>' : ''}
+          ${s.has_vft  ? '<span class="data-chip vft">VFT data</span>'  : ''}
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0">
+        <button class="btn sm" onclick="viewSummary('${escapeHtml(s.token)}')">View &#8594;</button>
+        ${s.has_vft ? `<button class="btn sm" onclick="downloadSummaryCSV('${escapeHtml(s.token)}')">CSV &#8595;</button>` : ''}
+      </div>
     </div>`;
   }
 
@@ -339,6 +372,31 @@ function buildDashboardHTML(doctor, invitations, origin) {
   .toast{display:none;position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--accent-dim);border:1px solid rgba(0,240,176,0.4);color:var(--accent);padding:10px 20px;border-radius:6px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;z-index:100;white-space:nowrap}
   .toast.show{display:block}
   .refresh-note{font-size:9px;color:var(--muted);letter-spacing:1px;text-align:right;margin-bottom:10px}
+  .data-chip{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;padding:2px 8px;border-radius:2px;display:inline-block}
+  .data-chip.gaze{color:var(--accent);background:var(--accent-dim);border:1px solid rgba(0,240,176,0.25)}
+  .data-chip.vft{color:var(--purple);background:var(--purple-dim);border:1px solid rgba(180,143,255,0.25)}
+  /* Summary modal */
+  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:200;align-items:center;justify-content:center;padding:16px}
+  .modal-backdrop.open{display:flex}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:10px;width:100%;max-width:700px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
+  .modal-header{padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+  .modal-title{font-family:var(--sans);font-size:16px;font-weight:700;color:#fff;flex:1}
+  .modal-close{background:transparent;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;padding:0 4px}
+  .modal-close:hover{color:var(--text)}
+  .modal-body{padding:18px 22px;overflow-y:auto;flex:1}
+  .modal-section{margin-bottom:20px}
+  .modal-section-title{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+  .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+  .stat-mini{background:var(--surface2);border-radius:5px;padding:10px 12px}
+  .stat-mini-num{font-family:var(--sans);font-size:20px;font-weight:700;color:var(--accent);line-height:1}
+  .stat-mini-lbl{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-top:4px}
+  .quad-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-width:280px}
+  .quad-cell{background:var(--surface2);border-radius:4px;padding:10px 12px;text-align:center}
+  .quad-cell-pos{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  .quad-cell-val{font-family:var(--sans);font-size:22px;font-weight:700;color:var(--purple)}
+  .quad-cell-lbl{font-size:8px;color:var(--muted);margin-top:2px}
+  .quad-eye-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .modal-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end}
 </style>
 </head>
 <body>
@@ -387,6 +445,32 @@ function buildDashboardHTML(doctor, invitations, origin) {
     <div class="card-title">Recently Revoked</div>
     <div class="inv-list">${revoked.map(revokedCard).join('')}</div>
   </div>` : ''}
+
+  <div class="card">
+    <div class="card-title">Stored Session Summaries</div>
+    <div class="inv-list" id="summariesList">
+      ${(summaries && summaries.length > 0)
+        ? summaries.map(summaryCard).join('')
+        : '<div class="empty">No stored summaries yet — summaries are saved automatically when a session completes</div>'}
+    </div>
+  </div>
+</div>
+
+<!-- Summary Detail Modal -->
+<div class="modal-backdrop" id="summaryModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalPatientName">—</div>
+      <button class="modal-close" onclick="closeModal()">&#10005;</button>
+    </div>
+    <div class="modal-body" id="modalBody">
+      <div class="empty">Loading…</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn sm" id="modalCsvBtn" style="display:none" onclick="downloadModalCSV()">Download CSV &#8595;</button>
+      <button class="btn sm danger" onclick="closeModal()">Close</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast">Copied!</div>
@@ -451,7 +535,219 @@ async function pollStatuses() {
 }
 setInterval(pollStatuses, 5000);
 
-</script>
+// ── Session summary viewer ─────────────────────────────────────────────────────
+let _modalVftData = null;
+let _modalPatientName = '';
+
+function closeModal() {
+  document.getElementById('summaryModal').classList.remove('open');
+  _modalVftData = null;
+}
+document.getElementById('summaryModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+function sensitivityLabel(val) {
+  if (val === null || val === undefined) return '—';
+  if (val <= 60)  return 'Excellent';
+  if (val <= 120) return 'Normal';
+  if (val <= 180) return 'Reduced';
+  return 'Very low';
+}
+function sensitivityColor(val) {
+  if (val === null || val === undefined) return 'var(--muted)';
+  if (val <= 60)  return 'var(--accent)';
+  if (val <= 120) return '#7adcff';
+  if (val <= 180) return 'var(--warn)';
+  return 'var(--danger)';
+}
+
+async function viewSummary(token) {
+  document.getElementById('modalPatientName').textContent = '…';
+  document.getElementById('modalBody').innerHTML = '<div class="empty">Loading…</div>';
+  document.getElementById('modalCsvBtn').style.display = 'none';
+  document.getElementById('summaryModal').classList.add('open');
+  try {
+    const r = await fetch('/api/sessions/' + token + '/summary');
+    if (!r.ok) { document.getElementById('modalBody').innerHTML = '<div class="empty">Could not load summary.</div>'; return; }
+    const s = await r.json();
+    _modalVftData = s.vftData;
+    _modalPatientName = s.patientName;
+    const date = new Date(s.completedAt);
+    const dateStr = date.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+    const timeStr = date.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+    document.getElementById('modalPatientName').textContent = s.patientName;
+
+    let html = '<div class="modal-section"><div class="modal-section-title">Session Info</div>';
+    html += '<div style="font-size:11px;color:var(--muted);line-height:2">';
+    if (s.note) html += '<div>Note: <span style="color:var(--text)">' + escHtml(s.note) + '</span></div>';
+    html += '<div>Completed: <span style="color:var(--text)">' + dateStr + ' at ' + timeStr + '</span></div>';
+    html += '</div></div>';
+
+    // Gaze stats
+    if (s.gazeStats) {
+      const g = s.gazeStats;
+      html += '<div class="modal-section"><div class="modal-section-title">Gaze Tracking</div>';
+      html += '<div class="stat-grid">';
+      html += statMini(g.focusPct !== undefined ? g.focusPct + '%' : '—', 'Focus time', 'var(--accent)');
+      html += statMini(g.awayPct  !== undefined ? g.awayPct  + '%' : '—', 'Off-centre', 'var(--danger)');
+      html += statMini(g.alerts   !== undefined ? g.alerts         : '—', 'Alert events', 'var(--warn)');
+      html += '</div></div>';
+    }
+
+    // VFT data
+    if (s.vftData) {
+      const v = s.vftData;
+      document.getElementById('modalCsvBtn').style.display = 'inline-flex';
+
+      const eyes = Object.keys(v.eyeThresholds || {});
+      if (eyes.length > 0) {
+        html += '<div class="modal-section"><div class="modal-section-title">VFT — Quadrant Thresholds (0–255 · lower = better)</div>';
+        eyes.forEach(eye => {
+          const th = v.eyeThresholds[eye];
+          const quadVals = { TL:[], TR:[], BL:[], BR:[] };
+          const QUAD_MAP = { R1C1:'TL',R1C2:'TL',R2C1:'TL',R2C2:'TL', R1C3:'TR',R1C4:'TR',R2C3:'TR',R2C4:'TR', R3C1:'BL',R3C2:'BL',R4C1:'BL',R4C2:'BL', R3C3:'BR',R3C4:'BR',R4C3:'BR',R4C4:'BR' };
+          Object.entries(th).forEach(([posId, val]) => { const q=QUAD_MAP[posId]; if(q && val!==null && val!==undefined) quadVals[q].push(val); });
+          const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
+          const tl=avg(quadVals.TL), tr=avg(quadVals.TR), bl=avg(quadVals.BL), br=avg(quadVals.BR);
+          html += '<div class="quad-eye-label">' + eye.charAt(0).toUpperCase()+eye.slice(1) + ' Eye</div>';
+          html += '<div class="quad-grid" style="margin-bottom:14px">';
+          html += quadCell('Upper-Left',  tl);
+          html += quadCell('Upper-Right', tr);
+          html += quadCell('Lower-Left',  bl);
+          html += quadCell('Lower-Right', br);
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      if (v.totalTrials !== undefined) {
+        html += '<div class="modal-section"><div class="modal-section-title">VFT Stats</div>';
+        html += '<div class="stat-grid">';
+        html += statMini(v.totalTrials, 'Total trials', 'var(--purple)');
+        const eyes2 = Object.keys(v.eyeThresholds || {});
+        html += statMini(eyes2.length === 2 ? 'Both' : (eyes2[0] || '—'), 'Eyes tested', 'var(--text)');
+        html += statMini(v.trialLog ? v.trialLog.filter(t=>t.seen).length : '—', 'Seen stimuli', 'var(--accent)');
+        html += '</div></div>';
+      }
+    }
+
+    if (!s.gazeStats && !s.vftData) {
+      html += '<div class="empty" style="margin-top:0">No detailed data was captured for this session.</div>';
+    }
+
+    document.getElementById('modalBody').innerHTML = html;
+  } catch(e) {
+    document.getElementById('modalBody').innerHTML = '<div class="empty">Error loading summary.</div>';
+  }
+}
+
+function statMini(val, lbl, color) {
+  return '<div class="stat-mini"><div class="stat-mini-num" style="color:'+color+'">'+escHtml(String(val))+'</div><div class="stat-mini-lbl">'+escHtml(lbl)+'</div></div>';
+}
+function quadCell(pos, val) {
+  const color = sensitivityColor(val);
+  const lbl = sensitivityLabel(val);
+  return '<div class="quad-cell"><div class="quad-cell-pos">'+pos+'</div><div class="quad-cell-val" style="color:'+color+'">'+(val !== null && val !== undefined ? val : '—')+'</div><div class="quad-cell-lbl">'+lbl+'</div></div>';
+}
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── CSV Download from stored summary ──────────────────────────────────────────
+function downloadModalCSV() {
+  if (!_modalVftData) { alert('No VFT data available.'); return; }
+  const vft = _modalVftData;
+  const log = vft.trialLog || [];
+  if (!log.length) { alert('No trial log in this session.'); return; }
+  buildAndDownloadCSV(log, vft.eyeThresholds || {}, _modalPatientName);
+}
+
+async function downloadSummaryCSV(token) {
+  try {
+    const r = await fetch('/api/sessions/' + token + '/summary');
+    if (!r.ok) { alert('Could not load summary.'); return; }
+    const s = await r.json();
+    if (!s.vftData || !s.vftData.trialLog || !s.vftData.trialLog.length) { alert('No VFT trial data for this session.'); return; }
+    buildAndDownloadCSV(s.vftData.trialLog, s.vftData.eyeThresholds || {}, s.patientName);
+  } catch(e) { alert('Download failed.'); }
+}
+
+function buildAndDownloadCSV(log, eyeThresholds, patientName) {
+  const escape = v => { const s=String(v===null||v===undefined?'':v); return s.includes(',')||s.includes('"')||s.includes('\\n') ? '"'+s.replace(/"/g,'""')+'"' : s; };
+  const row = cols => cols.map(escape).join(',');
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+  const timeStr = now.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
+
+  function fieldLocation(dx, dy) {
+    const h = dx < -0.15 ? 'Left' : dx > 0.15 ? 'Right' : 'Central';
+    const v = dy < -0.15 ? 'Upper': dy > 0.15 ? 'Lower' : 'Central';
+    if (v==='Central' && h==='Central') return 'Centre';
+    if (v==='Central') return h; if (h==='Central') return v;
+    return v+'-'+h;
+  }
+  function sensLbl(val) {
+    if (val===null||val===undefined) return 'Not tested';
+    if (val<=60) return 'High (excellent)'; if (val<=120) return 'Normal';
+    if (val<=180) return 'Reduced'; return 'Very low';
+  }
+  const QUAD_MAP = { R1C1:'TL',R1C2:'TL',R2C1:'TL',R2C2:'TL', R1C3:'TR',R1C4:'TR',R2C3:'TR',R2C4:'TR', R3C1:'BL',R3C2:'BL',R4C1:'BL',R4C2:'BL', R3C3:'BR',R3C4:'BR',R4C3:'BR',R4C4:'BR' };
+
+  const lines = [
+    '# CenterGaze — Visual Field Test Report (Stored Summary)',
+    '# Patient : ' + patientName,
+    '# Date    : ' + dateStr + '  ' + timeStr,
+    '# Trials  : ' + log.length,
+    '',
+  ];
+
+  // Quadrant summaries per eye
+  Object.entries(eyeThresholds).forEach(([eye, th]) => {
+    const qv = {TL:[],TR:[],BL:[],BR:[]};
+    Object.entries(th).forEach(([posId,val])=>{ const q=QUAD_MAP[posId]; if(q&&val!==null&&val!==undefined) qv[q].push(val); });
+    const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
+    const tl=avg(qv.TL),tr=avg(qv.TR),bl=avg(qv.BL),br=avg(qv.BR);
+    const fmt = v => v!==null ? String(v).padStart(3) : ' — ';
+    lines.push('# Quadrant Summary — ' + eye.toUpperCase() + ' EYE  (0-255 · lower = better)');
+    lines.push('#               LEFT FIELD    |    RIGHT FIELD');
+    lines.push('#  UPPER  :    ' + fmt(tl) + '           |         ' + fmt(tr));
+    lines.push('#  LOWER  :    ' + fmt(bl) + '           |         ' + fmt(br));
+    lines.push('');
+  });
+
+  // Position threshold table per eye
+  const posOrder = ['R1C1','R1C2','R1C3','R1C4','R2C1','R2C2','R2C3','R2C4','R3C1','R3C2','R3C3','R3C4','R4C1','R4C2','R4C3','R4C4'];
+  Object.entries(eyeThresholds).forEach(([eye, th]) => {
+    lines.push('# Position Thresholds — ' + eye.toUpperCase() + ' EYE');
+    lines.push(row(['Location','Position ID','Eye','Threshold (0-255)','Sensitivity']));
+    posOrder.forEach(posId => {
+      const val = th[posId]; if(val===null||val===undefined) return;
+      const trial = log.find(t => t.position_id === posId && (t.eye===eye||!t.eye));
+      const loc = trial ? fieldLocation(trial.dx, trial.dy) : posId;
+      lines.push(row([loc, posId, eye, val, sensLbl(val)]));
+    });
+    lines.push('');
+  });
+
+  // Trial log
+  lines.push('# Trial Log');
+  lines.push(row(['Trial #','Eye','Field Location','Position ID','Luminance','Result','Reaction Time (ms)','Time into Session (s)']));
+  const t0 = log.length > 0 ? log[0].timestamp_ms : 0;
+  log.forEach(r => {
+    const elapsed = r.timestamp_ms && t0 ? Math.round((r.timestamp_ms - t0)/1000) : '';
+    lines.push(row([r.trial_number, r.eye ? r.eye.charAt(0).toUpperCase()+r.eye.slice(1):'—', fieldLocation(r.dx, r.dy), r.position_id, r.luminance, r.seen?'SEEN':'MISSED', r.seen&&r.rt_ms?r.rt_ms:'—', elapsed]));
+  });
+
+  const csv = lines.join('\\r\\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = now.toISOString().replace(/[:.]/g,'-').slice(0,16);
+  a.href = url; a.download = 'centergaze_' + patientName.replace(/[^a-z0-9]/gi,'_') + '_' + ts + '.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+}</script>
 </body>
 </html>`;
 }
@@ -608,6 +904,65 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { ok: true });
     }
 
+    // ── Session Summary API ───────────────────────────────────────────────────
+
+    // POST /api/sessions/:token/summary  — doctor monitor pushes summary on completion
+    const summaryPost = url.match(/^\/api\/sessions\/([a-f0-9]{40})\/summary$/);
+    if (summaryPost && req.method === 'POST') {
+      if (!doctor) return sendJSON(res, 401, { error: 'Not authenticated' });
+      const token = summaryPost[1];
+      const r = await query('SELECT * FROM invitations WHERE token=$1', [token]);
+      const inv = r.rows[0] ? rowToInv(r.rows[0]) : null;
+      if (!inv || inv.doctorId !== doctor.id) return sendJSON(res, 404, { error: 'Not found' });
+      const body = await readBody(req);
+      const { gazeStats, vftData } = body;
+      await query(`
+        INSERT INTO session_summaries (token, doctor_id, patient_name, note, completed_at, gaze_stats, vft_data)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        ON CONFLICT (token) DO UPDATE
+          SET gaze_stats=$6, vft_data=$7, completed_at=$5
+      `, [token, doctor.id, inv.patientName, inv.note, Date.now(),
+          JSON.stringify(gazeStats || null), JSON.stringify(vftData || null)]);
+      console.log(`[summary] saved for token=${token} patient=${inv.patientName}`);
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    // GET /api/sessions/history  — list all completed summaries for this doctor
+    if (url === '/api/sessions/history' && req.method === 'GET') {
+      if (!doctor) return sendJSON(res, 401, { error: 'Not authenticated' });
+      const r = await query(`
+        SELECT token, patient_name, note, completed_at,
+               gaze_stats IS NOT NULL  AS has_gaze,
+               vft_data   IS NOT NULL  AS has_vft
+        FROM session_summaries
+        WHERE doctor_id=$1
+        ORDER BY completed_at DESC
+        LIMIT 100
+      `, [doctor.id]);
+      return sendJSON(res, 200, { sessions: r.rows });
+    }
+
+    // GET /api/sessions/:token/summary  — full data for one session
+    const summaryGet = url.match(/^\/api\/sessions\/([a-f0-9]{40})\/summary$/);
+    if (summaryGet && req.method === 'GET') {
+      if (!doctor) return sendJSON(res, 401, { error: 'Not authenticated' });
+      const token = summaryGet[1];
+      const r = await query(
+        'SELECT * FROM session_summaries WHERE token=$1 AND doctor_id=$2',
+        [token, doctor.id]
+      );
+      if (!r.rows.length) return sendJSON(res, 404, { error: 'Not found' });
+      const row = r.rows[0];
+      return sendJSON(res, 200, {
+        token: row.token,
+        patientName: row.patient_name,
+        note: row.note,
+        completedAt: Number(row.completed_at),
+        gazeStats: row.gaze_stats,
+        vftData:   row.vft_data,
+      });
+    }
+
     // ── Pages ─────────────────────────────────────────────────────────────────
 
     if (url === '/login') {
@@ -630,7 +985,14 @@ const server = http.createServer(async (req, res) => {
         [doctor.id]
       );
       const myInvs = r.rows.map(rowToInv);
-      return sendHTML(res, buildDashboardHTML(doctor, myInvs, origin));
+      const rs = await query(
+        `SELECT token, patient_name, note, completed_at,
+                gaze_stats IS NOT NULL AS has_gaze,
+                vft_data   IS NOT NULL AS has_vft
+         FROM session_summaries WHERE doctor_id=$1 ORDER BY completed_at DESC LIMIT 100`,
+        [doctor.id]
+      );
+      return sendHTML(res, buildDashboardHTML(doctor, myInvs, origin, rs.rows));
     }
 
     if (url === '/doctor') {
@@ -795,6 +1157,21 @@ if (WebSocketServer) {
           const msg = JSON.parse(isBinary ? raw.toString('utf8') : raw.toString('utf8'));
           if (msg.type === 'vft_both_complete') {
             testCompleted = true;
+          }
+          // Augment session_start with the invitation token so the doctor UI can
+          // reference the correct session when saving summaries.
+          if (msg.type === 'session_start') {
+            msg.token = token;
+            const augmented = JSON.stringify(msg);
+            if (BUFFER_TYPES.has(msg.type) && room.buffer.length < BUFFER_MAX) {
+              room.buffer.push(augmented);
+            }
+            for (const doc of room.doctors) {
+              if (doc.readyState !== 1) continue;
+              if (doc.bufferedAmount > MAX_MESSAGE_BYTES * 3) continue;
+              doc.send(augmented);
+            }
+            return;
           }
           // Buffer this message if it's a meaningful test event (not noisy gaze frames)
           if (BUFFER_TYPES.has(msg.type)) {
