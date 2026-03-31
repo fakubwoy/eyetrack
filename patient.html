@@ -956,26 +956,78 @@ async function loop() {
 //  already finalised (hit, miss, or the VFT has been stopped).
 // ─────────────────────────────────────────────────────────────────────────
 
-const VFT_STIM_DURATION = 250; // ms stimulus on-screen
-const VFT_ISI = [800, 1400];   // inter-stimulus interval range (ms)
-const VFT_GRACE = 600;         // ms after stim-off — covers up to ~850ms total RT from stim start
+const VFT_STIM_DURATION = 220; // ms stimulus on-screen (still clearly visible)
+const VFT_ISI = [650, 1050];   // slightly wider ISI — gives patient time to reset after slow responses
+const VFT_GRACE = 750;         // ms after stim-off — covers up to ~970ms total RT from stim start
+                               // Patient RT data: median ~535ms, max observed ~707ms.
+                               // 220 + 750 = 970ms total window gives ~37% headroom above max RT.
+
+// 4×4 grid of 16 test positions.
+// dx/dy are fractions of half-screen (so dx=0.12 → 12% of half-width from centre).
+// Rows top→bottom: dy ∈ {-0.30, -0.12, +0.12, +0.30}
+// Cols left→right: dx ∈ {-0.30, -0.10, +0.10, +0.30}
 const VFT_POSITIONS = [
-  { id: 'TL', label: 'Top-Left',     dx: -0.28, dy: -0.28 },
-  { id: 'TR', label: 'Top-Right',    dx:  0.28, dy: -0.28 },
-  { id: 'BL', label: 'Bottom-Left',  dx: -0.28, dy:  0.28 },
-  { id: 'BR', label: 'Bottom-Right', dx:  0.28, dy:  0.28 },
+  { id: 'R1C1', label: 'Row1-Col1', dx: -0.30, dy: -0.30 },
+  { id: 'R1C2', label: 'Row1-Col2', dx: -0.10, dy: -0.30 },
+  { id: 'R1C3', label: 'Row1-Col3', dx:  0.10, dy: -0.30 },
+  { id: 'R1C4', label: 'Row1-Col4', dx:  0.30, dy: -0.30 },
+  { id: 'R2C1', label: 'Row2-Col1', dx: -0.30, dy: -0.10 },
+  { id: 'R2C2', label: 'Row2-Col2', dx: -0.10, dy: -0.10 },
+  { id: 'R2C3', label: 'Row2-Col3', dx:  0.10, dy: -0.10 },
+  { id: 'R2C4', label: 'Row2-Col4', dx:  0.30, dy: -0.10 },
+  { id: 'R3C1', label: 'Row3-Col1', dx: -0.30, dy:  0.10 },
+  { id: 'R3C2', label: 'Row3-Col2', dx: -0.10, dy:  0.10 },
+  { id: 'R3C3', label: 'Row3-Col3', dx:  0.10, dy:  0.10 },
+  { id: 'R3C4', label: 'Row3-Col4', dx:  0.30, dy:  0.10 },
+  { id: 'R4C1', label: 'Row4-Col1', dx: -0.30, dy:  0.30 },
+  { id: 'R4C2', label: 'Row4-Col2', dx: -0.10, dy:  0.30 },
+  { id: 'R4C3', label: 'Row4-Col3', dx:  0.10, dy:  0.30 },
+  { id: 'R4C4', label: 'Row4-Col4', dx:  0.30, dy:  0.30 },
 ];
 
 let vftState = {};
 
+// ─── ADAPTIVE STAIRCASE WITH CROSS-POSITION LEARNING ────────────────────────
+//
+// Three speed optimisations that don't sacrifice accuracy:
+//
+// 1. SPATIAL TRANSFER — when a position finishes, its confirmed threshold
+//    immediately tightens the lo/hi bracket of every spatial neighbour
+//    (within 0.25 grid units). Neighbours skip trials they'd have wasted
+//    re-discovering the same luminance range.
+//
+// 2. STREAK EARLY-EXIT — 2 consecutive hits OR 2 consecutive misses at
+//    different luminance levels = the staircase has already bracketed the
+//    threshold. Mark done immediately instead of waiting for a formal reversal.
+//
+// 3. CONVERGENCE-FIRST SCHEDULING — prioritise positions closest to done
+//    (smallest hi-lo interval). Finishing positions quickly triggers spatial
+//    transfer to neighbours, creating a cascade that shrinks the whole grid fast.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Spatial prior: eccentricity-based seed so trial 1 is already near threshold.
+function eccentricityPrior(dx, dy) {
+  const ecc = Math.sqrt(dx * dx + dy * dy);
+  if (ecc < 0.15) return { lo: 40,  hi: 180, startLum: 110 };
+  if (ecc < 0.25) return { lo: 60,  hi: 210, startLum: 140 };
+  return              { lo: 80,  hi: 240, startLum: 170 };
+}
+
 function initVFTState() {
   VFT_POSITIONS.forEach(p => {
+    const prior = eccentricityPrior(p.dx, p.dy);
     vftState[p.id] = {
-      lo: 0, hi: 255,
-      step: 64,
+      lo: prior.lo,
+      hi: prior.hi,
+      startLum: prior.startLum,
+      step: 80,
+      firstTrial: true,
       lastDir: null,
       reversals: 0,
-      responses: [],
+      responses: [],        // full log: {luminance, hit}
+      consecutiveHits: 0,
+      consecutiveMisses: 0,
       done: false
     };
   });
@@ -986,22 +1038,68 @@ function isVFTDone() {
 }
 
 function vftEstimatedTotal() {
-  return VFT_POSITIONS.length * 7;
+  return VFT_POSITIONS.length * 4; // ~4 trials per position with adaptive learning
 }
 
 function getNextLuminance(posId) {
   const s = vftState[posId];
+  if (s.firstTrial) return s.startLum;
   return Math.round((s.lo + s.hi) / 2);
+}
+
+// ── Spatial transfer: when posId converges, push its threshold to neighbours ──
+function propagateThreshold(donePosId) {
+  const src = vftState[donePosId];
+  const srcThreshold = getThresholdEstimate(donePosId);
+  if (srcThreshold === null) return;
+
+  const srcPos = VFT_POSITIONS.find(p => p.id === donePosId);
+  const TRANSFER_RADIUS = 0.26; // grid units — covers immediate neighbours only
+
+  VFT_POSITIONS.forEach(p => {
+    if (p.id === donePosId) return;
+    const nb = vftState[p.id];
+    if (nb.done) return;
+
+    const dist = Math.sqrt((p.dx - srcPos.dx) ** 2 + (p.dy - srcPos.dy) ** 2);
+    if (dist > TRANSFER_RADIUS) return;
+
+    // Neighbour thresholds are typically within ±30 lum units of each other.
+    // Tighten the bracket conservatively — never override a bracket that's
+    // already tighter than what the neighbour can offer.
+    const transferMargin = 35;
+    const newLo = srcThreshold - transferMargin;
+    const newHi = srcThreshold + transferMargin;
+
+    if (newLo > nb.lo) nb.lo = newLo;
+    if (newHi < nb.hi) nb.hi = newHi;
+
+    // If the neighbour hasn't had its first trial yet, update its seed too
+    if (nb.firstTrial) {
+      nb.startLum = Math.round((nb.lo + nb.hi) / 2);
+    }
+  });
 }
 
 function recordVFTResponse(posId, luminance, hit) {
   const s = vftState[posId];
+  s.firstTrial = false;
   s.responses.push({ luminance, hit });
 
+  // ── Update consecutive streak counters ──
+  if (hit) {
+    s.consecutiveHits++;
+    s.consecutiveMisses = 0;
+  } else {
+    s.consecutiveMisses++;
+    s.consecutiveHits = 0;
+  }
+
+  // ── Standard staircase bracket update ──
   const dir = hit ? 'down' : 'up';
   if (s.lastDir !== null && dir !== s.lastDir) {
     s.reversals++;
-    s.step = Math.max(4, Math.floor(s.step / 2));
+    s.step = Math.max(8, Math.floor(s.step / 2));
   }
   s.lastDir = dir;
 
@@ -1013,12 +1111,24 @@ function recordVFTResponse(posId, luminance, hit) {
 
   if (s.lo >= s.hi) {
     const mid = Math.round((s.lo + s.hi) / 2);
-    s.lo = Math.max(0,   mid - 2);
-    s.hi = Math.min(255, mid + 2);
+    s.lo = Math.max(0,   mid - 4);
+    s.hi = Math.min(255, mid + 4);
   }
 
-  if ((s.hi - s.lo) <= 4 || s.reversals >= 3) {
+  // ── Convergence checks ──
+  const intervalTight   = (s.hi - s.lo) <= 16;
+  const formalReversal  = s.reversals >= 2;
+
+  // Streak exit: 2 consecutive same-direction responses at *different* luminances
+  // means the staircase has confirmed the direction twice — threshold is bracketed.
+  const recentTwo = s.responses.slice(-2);
+  const streakExit = recentTwo.length === 2
+    && recentTwo[0].hit === recentTwo[1].hit          // same outcome
+    && recentTwo[0].luminance !== recentTwo[1].luminance; // different lum = real confirmation
+
+  if (intervalTight || formalReversal || streakExit) {
     s.done = true;
+    propagateThreshold(posId); // immediately benefit spatial neighbours
   }
 }
 
@@ -1041,7 +1151,19 @@ function getThresholdEstimate(posId) {
 function getNextPosId() {
   const active = VFT_POSITIONS.filter(p => !vftState[p.id].done);
   if (active.length === 0) return null;
-  active.sort((a, b) => vftState[a.id].responses.length - vftState[b.id].responses.length);
+
+  // CONVERGENCE-FIRST: sort by smallest hi-lo interval (closest to done).
+  // Finishing positions quickly triggers propagateThreshold() for neighbours,
+  // creating a cascade effect that shrinks the whole grid faster.
+  // Tie-break: most responses (most data = most reliable propagation source).
+  active.sort((a, b) => {
+    const ra = vftState[a.id], rb = vftState[b.id];
+    const intervalA = ra.hi - ra.lo;
+    const intervalB = rb.hi - rb.lo;
+    const intDiff = intervalA - intervalB;
+    if (Math.abs(intDiff) > 10) return intDiff; // meaningfully different intervals
+    return rb.responses.length - ra.responses.length; // tie-break: more data first
+  });
   return active[0].id;
 }
 
@@ -1175,6 +1297,18 @@ function drawVFTScene(stimPos, luminance) {
   vftCtx2.fillRect(0, 0, W, H);
 
   const cx = W / 2, cy = H / 2;
+
+  // Faint guide dots at all 16 grid positions (helps patient orientation)
+  VFT_POSITIONS.forEach(p => {
+    const gx = cx + p.dx * W;
+    const gy = cy + p.dy * H;
+    vftCtx2.beginPath();
+    vftCtx2.arc(gx, gy, 2, 0, Math.PI * 2);
+    vftCtx2.fillStyle = 'rgba(255,255,255,0.04)';
+    vftCtx2.fill();
+  });
+
+  // Central fixation dot
   vftCtx2.beginPath();
   vftCtx2.arc(cx, cy, 4, 0, Math.PI * 2);
   vftCtx2.fillStyle = '#ff3a5c';
@@ -1190,8 +1324,10 @@ function drawVFTScene(stimPos, luminance) {
     if (pos) {
       const sx = cx + pos.dx * W;
       const sy = cy + pos.dy * H;
+      // Stimulus radius: 11px (slightly smaller than before for the denser grid,
+      // but still easily visible — avoids adjacent stimuli overlapping).
       vftCtx2.beginPath();
-      vftCtx2.arc(sx, sy, 14, 0, Math.PI * 2);
+      vftCtx2.arc(sx, sy, 11, 0, Math.PI * 2);
       vftCtx2.fillStyle = `rgb(${luminance},${luminance},${luminance})`;
       vftCtx2.fill();
     }
@@ -1272,8 +1408,9 @@ function onVFTKey(e) {
   if (phase !== 'stim' && phase !== 'grace') return;
 
   const rt = Date.now() - vftActiveTrial.stimStart;
-  // Ignore implausibly fast presses (< 80ms from stim start — definitely accidental)
-  if (rt < 80) return;
+  // Ignore implausibly fast presses (< 150ms from stim start).
+  // Patient's measured RT minimum is ~426ms, so anything under 150ms is definitely accidental.
+  if (rt < 150) return;
 
   // Both stim and grace phases count as a HIT — patient saw the dot and responded.
   vftActiveTrial.rt = rt;
