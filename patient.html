@@ -998,12 +998,14 @@ let vftState = {};
 //
 // 1. SPATIAL TRANSFER — when a position finishes, its confirmed threshold
 //    immediately tightens the lo/hi bracket of every spatial neighbour
-//    (within 0.25 grid units). Neighbours skip trials they'd have wasted
+//    (within 0.26 grid units). Neighbours skip trials they'd have wasted
 //    re-discovering the same luminance range.
 //
-// 2. STREAK EARLY-EXIT — 2 consecutive hits OR 2 consecutive misses at
-//    different luminance levels = the staircase has already bracketed the
-//    threshold. Mark done immediately instead of waiting for a formal reversal.
+// 2. STREAK EARLY-EXIT — 3 consecutive same-direction responses at 3
+//    *different* luminances = the staircase has confirmed the direction
+//    three times. Only exits if the true threshold is clearly above/below.
+//    (Previously 2 — caused premature exit at high luminances before the
+//    staircase had descended to the real threshold.)
 //
 // 3. CONVERGENCE-FIRST SCHEDULING — prioritise positions closest to done
 //    (smallest hi-lo interval). Finishing positions quickly triggers spatial
@@ -1011,12 +1013,15 @@ let vftState = {};
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Spatial prior: eccentricity-based seed so trial 1 is already near threshold.
+// Spatial prior: eccentricity-based seed calibrated to real clinical VFT thresholds.
+// Real sensitivity thresholds are typically 5–40/255 for healthy eyes,
+// rising toward the periphery. We seed near the middle of that range
+// and keep lo=0 so the staircase can discover sub-10 thresholds.
 function eccentricityPrior(dx, dy) {
   const ecc = Math.sqrt(dx * dx + dy * dy);
-  if (ecc < 0.15) return { lo: 40,  hi: 180, startLum: 110 };
-  if (ecc < 0.25) return { lo: 60,  hi: 210, startLum: 140 };
-  return              { lo: 80,  hi: 240, startLum: 170 };
+  if (ecc < 0.15) return { lo: 0, hi: 80,  startLum: 30 };  // central: most sensitive
+  if (ecc < 0.25) return { lo: 0, hi: 100, startLum: 45 };  // para-central
+  return              { lo: 0, hi: 120, startLum: 60 };  // peripheral: less sensitive
 }
 
 function initVFTState() {
@@ -1026,7 +1031,7 @@ function initVFTState() {
       lo: prior.lo,
       hi: prior.hi,
       startLum: prior.startLum,
-      step: 80,
+      step: 40,           // smaller initial step — avoids leaping past the real threshold
       firstTrial: true,
       lastDir: null,
       reversals: 0,
@@ -1043,13 +1048,15 @@ function isVFTDone() {
 }
 
 function vftEstimatedTotal() {
-  return VFT_POSITIONS.length * 4; // ~4 trials per position with adaptive learning
+  return VFT_POSITIONS.length * 6; // ~6 trials per position with the more thorough staircase
 }
 
 function getNextLuminance(posId) {
   const s = vftState[posId];
   if (s.firstTrial) return s.startLum;
-  return Math.round((s.lo + s.hi) / 2);
+  // Always bisect the current bracket, clamped to [0, 255]
+  const mid = Math.round((s.lo + s.hi) / 2);
+  return Math.max(0, Math.min(255, mid));
 }
 
 // ── Spatial transfer: when posId converges, push its threshold to neighbours ──
@@ -1069,10 +1076,10 @@ function propagateThreshold(donePosId) {
     const dist = Math.sqrt((p.dx - srcPos.dx) ** 2 + (p.dy - srcPos.dy) ** 2);
     if (dist > TRANSFER_RADIUS) return;
 
-    // Neighbour thresholds are typically within ±30 lum units of each other.
+    // Neighbour thresholds are typically within ±40 lum units of each other.
     // Tighten the bracket conservatively — never override a bracket that's
     // already tighter than what the neighbour can offer.
-    const transferMargin = 35;
+    const transferMargin = 50;
     const newLo = srcThreshold - transferMargin;
     const newHi = srcThreshold + transferMargin;
 
@@ -1104,7 +1111,8 @@ function recordVFTResponse(posId, luminance, hit) {
   const dir = hit ? 'down' : 'up';
   if (s.lastDir !== null && dir !== s.lastDir) {
     s.reversals++;
-    s.step = Math.max(8, Math.floor(s.step / 2));
+    // Halve step more slowly — preserve resolution near the real threshold
+    s.step = Math.max(4, Math.floor(s.step * 0.65));
   }
   s.lastDir = dir;
 
@@ -1116,20 +1124,24 @@ function recordVFTResponse(posId, luminance, hit) {
 
   if (s.lo >= s.hi) {
     const mid = Math.round((s.lo + s.hi) / 2);
-    s.lo = Math.max(0,   mid - 4);
-    s.hi = Math.min(255, mid + 4);
+    s.lo = Math.max(0,   mid - 2);
+    s.hi = Math.min(255, mid + 2);
   }
 
   // ── Convergence checks ──
-  const intervalTight   = (s.hi - s.lo) <= 16;
-  const formalReversal  = s.reversals >= 2;
+  // Require a tighter interval (≤8) to avoid premature convergence at high lum
+  const intervalTight   = (s.hi - s.lo) <= 8;
+  // Require 3 reversals for a formal exit (was 2 — too easy to exit early)
+  const formalReversal  = s.reversals >= 3;
 
-  // Streak exit: 2 consecutive same-direction responses at *different* luminances
-  // means the staircase has confirmed the direction twice — threshold is bracketed.
-  const recentTwo = s.responses.slice(-2);
-  const streakExit = recentTwo.length === 2
-    && recentTwo[0].hit === recentTwo[1].hit          // same outcome
-    && recentTwo[0].luminance !== recentTwo[1].luminance; // different lum = real confirmation
+  // Streak exit: only exit early if we have ≥3 responses AND
+  // the last 3 are all the same outcome at 3 different luminances.
+  // This prevents the staircase exiting after just 2 high-lum hits
+  // before it ever descends near the real threshold.
+  const recentThree = s.responses.slice(-3);
+  const streakExit = recentThree.length === 3
+    && recentThree.every(r => r.hit === recentThree[0].hit)   // all same outcome
+    && new Set(recentThree.map(r => r.luminance)).size === 3; // 3 distinct luminances
 
   if (intervalTight || formalReversal || streakExit) {
     s.done = true;
