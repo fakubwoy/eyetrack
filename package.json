@@ -1,12 +1,13 @@
 {
   "name": "centergaze",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "CenterGaze – Patient/Doctor gaze tracking system",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
+    "pg": "^8.13.3",
     "ws": "^8.20.0"
   },
   "engines": {

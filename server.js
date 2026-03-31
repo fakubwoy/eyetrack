@@ -2,12 +2,12 @@ const http   = require('http');
 const fs     = require('fs');
 const path   = require('path');
 const crypto = require('crypto');
+const { Pool } = require('pg');
 
 const PORT = process.env.PORT || 3000;
 
 // ── tunables ──────────────────────────────────────────────────────────────────
 const MAX_MESSAGE_BYTES = 200 * 1024;
-const DATA_FILE        = path.join(__dirname, 'data.json');
 // ─────────────────────────────────────────────────────────────────────────────
 
 let WebSocketServer;
@@ -17,24 +17,48 @@ try {
   console.warn('ws module not found. Run: npm install ws');
 }
 
-// ── Persistence ───────────────────────────────────────────────────────────────
-// db.doctors:     { [doctorId]: { id, email, passwordHash, name, createdAt } }
-// db.invitations: { [token]:    { token, doctorId, patientName, note, createdAt, usedAt, status } }
-// status values: 'pending' | 'active' | 'used' | 'expired'
+// ── Postgres ───────────────────────────────────────────────────────────────────
+// Railway injects DATABASE_URL automatically when you add a Postgres plugin.
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('railway')
+    ? { rejectUnauthorized: false }
+    : false,
+});
 
-function loadData() {
+async function query(sql, params) {
+  const client = await pool.connect();
   try {
-    if (fs.existsSync(DATA_FILE)) return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  } catch(e) { console.warn('[data] Load failed:', e.message); }
-  return { doctors: {}, invitations: {} };
+    return await client.query(sql, params);
+  } finally {
+    client.release();
+  }
 }
 
-function saveData() {
-  try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); }
-  catch(e) { console.error('[data] Save failed:', e.message); }
+// Create tables on startup if they don't exist yet
+async function initDB() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS doctors (
+      id            TEXT PRIMARY KEY,
+      email         TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      name          TEXT NOT NULL,
+      created_at    BIGINT NOT NULL
+    )
+  `);
+  await query(`
+    CREATE TABLE IF NOT EXISTS invitations (
+      token        TEXT PRIMARY KEY,
+      doctor_id    TEXT NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+      patient_name TEXT NOT NULL,
+      note         TEXT NOT NULL DEFAULT '',
+      status       TEXT NOT NULL DEFAULT 'pending',
+      created_at   BIGINT NOT NULL,
+      used_at      BIGINT
+    )
+  `);
+  console.log('[db] Tables ready');
 }
-
-let db = loadData();
 
 // ── Auth helpers ───────────────────────────────────────────────────────────────
 function hashPassword(pw) {
@@ -50,11 +74,12 @@ function createSession(doctorId) {
   sessions[sid] = { doctorId, createdAt: Date.now() };
   return sid;
 }
-function getSessionDoctor(sid) {
+async function getSessionDoctor(sid) {
   const s = sessions[sid];
   if (!s) return null;
   if (Date.now() - s.createdAt > 7 * 24 * 60 * 60 * 1000) { delete sessions[sid]; return null; }
-  return db.doctors[s.doctorId] || null;
+  const r = await query('SELECT * FROM doctors WHERE id = $1', [s.doctorId]);
+  return r.rows[0] ? rowToDoctor(r.rows[0]) : null;
 }
 function parseCookies(req) {
   const out = {};
@@ -63,6 +88,15 @@ function parseCookies(req) {
     if (k) out[k.trim()] = decodeURIComponent(v.join('='));
   });
   return out;
+}
+
+// Map snake_case DB rows to camelCase objects the rest of the code expects
+function rowToDoctor(r) {
+  return { id: r.id, email: r.email, passwordHash: r.password_hash, name: r.name, createdAt: Number(r.created_at) };
+}
+function rowToInv(r) {
+  return { token: r.token, doctorId: r.doctor_id, patientName: r.patient_name, note: r.note,
+           status: r.status, createdAt: Number(r.created_at), usedAt: r.used_at ? Number(r.used_at) : null };
 }
 
 // ── Static HTML files ─────────────────────────────────────────────────────────
@@ -202,8 +236,8 @@ function buildDashboardHTML(doctor, invitations, origin) {
         <div class="inv-meta" style="margin-top:2px">Session started ${timeAgo(inv.usedAt)}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0">
-        <span class="inv-status active">● Live</span>
-        <a href="/doctor" class="monitor-btn">Monitor →</a>
+        <span class="inv-status active">&#9679; Live</span>
+        <a href="/doctor" class="monitor-btn">Monitor &#8594;</a>
       </div>
     </div>`;
   }
@@ -223,7 +257,7 @@ function buildDashboardHTML(doctor, invitations, origin) {
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CenterGaze — Sessions</title>
+<title>CenterGaze &mdash; Sessions</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -303,7 +337,7 @@ function buildDashboardHTML(doctor, invitations, origin) {
       <div><label>Patient Name</label><input type="text" id="invName" placeholder="e.g. John Doe"></div>
       <div><label>Note (optional)</label><input type="text" id="invNote" placeholder="e.g. Follow-up visit"></div>
     </div>
-    <button class="btn" onclick="createInvitation()">Generate Patient Link →</button>
+    <button class="btn" onclick="createInvitation()">Generate Patient Link &#8594;</button>
   </div>
 
   <div class="card">
@@ -349,7 +383,6 @@ function copyLink(text){
     const t=document.getElementById('toast');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000);
   });
 }
-// Auto-refresh every 8s to pick up live/done session changes
 setTimeout(()=>location.reload(),8000);
 </script>
 </body>
@@ -362,7 +395,7 @@ function buildPatientLandingHTML(inv, doctor) {
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CenterGaze — Patient Session</title>
+<title>CenterGaze &mdash; Patient Session</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -385,8 +418,8 @@ function buildPatientLandingHTML(inv, doctor) {
   <div class="sub">Patient Session</div>
   <div class="greeting">Hello, <strong>${escapeHtml(inv.patientName)}</strong></div>
   <div class="doctor-info">You have been invited by<br><strong style="color:var(--text)">${escapeHtml(doctor.name)}</strong><br>to complete a gaze tracking session.</div>
-  ${inv.note ? `<div class="note-box">📋 ${escapeHtml(inv.note)}</div>` : ''}
-  <button class="btn" onclick="location.href='/patient/${escapeHtml(inv.token)}/start'">Begin Session →</button>
+  ${inv.note ? `<div class="note-box">&#128203; ${escapeHtml(inv.note)}</div>` : ''}
+  <button class="btn" onclick="location.href='/patient/${escapeHtml(inv.token)}/start'">Begin Session &#8594;</button>
 </div>
 </body>
 </html>`;
@@ -422,7 +455,7 @@ function sendHTML(res, html, status = 200) {
 const server = http.createServer(async (req, res) => {
   const url     = req.url.split('?')[0];
   const cookies = parseCookies(req);
-  const doctor  = getSessionDoctor(cookies['cg_session']);
+  const doctor  = await getSessionDoctor(cookies['cg_session']);
 
   try {
     // ── API ───────────────────────────────────────────────────────────────────
@@ -431,11 +464,13 @@ const server = http.createServer(async (req, res) => {
       const { name, email, password } = await readBody(req);
       if (!name || !email || !password) return sendJSON(res, 400, { error: 'All fields required' });
       if (password.length < 8) return sendJSON(res, 400, { error: 'Password must be at least 8 characters' });
-      if (Object.values(db.doctors).find(d => d.email === email.toLowerCase()))
-        return sendJSON(res, 400, { error: 'Email already registered' });
+      const existing = await query('SELECT id FROM doctors WHERE email = $1', [email.toLowerCase()]);
+      if (existing.rows.length) return sendJSON(res, 400, { error: 'Email already registered' });
       const id = generateId();
-      db.doctors[id] = { id, email: email.toLowerCase(), passwordHash: hashPassword(password), name, createdAt: Date.now() };
-      saveData();
+      await query(
+        'INSERT INTO doctors (id, email, password_hash, name, created_at) VALUES ($1,$2,$3,$4,$5)',
+        [id, email.toLowerCase(), hashPassword(password), name, Date.now()]
+      );
       const sid = createSession(id);
       res.setHeader('Set-Cookie', `cg_session=${sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`);
       return sendJSON(res, 200, { ok: true });
@@ -443,7 +478,8 @@ const server = http.createServer(async (req, res) => {
 
     if (url === '/api/login' && req.method === 'POST') {
       const { email, password } = await readBody(req);
-      const d = Object.values(db.doctors).find(x => x.email === (email||'').toLowerCase());
+      const r = await query('SELECT * FROM doctors WHERE email = $1', [(email||'').toLowerCase()]);
+      const d = r.rows[0] ? rowToDoctor(r.rows[0]) : null;
       if (!d || d.passwordHash !== hashPassword(password))
         return sendJSON(res, 401, { error: 'Invalid email or password' });
       const sid = createSession(d.id);
@@ -462,18 +498,20 @@ const server = http.createServer(async (req, res) => {
       const { patientName, note } = await readBody(req);
       if (!patientName) return sendJSON(res, 400, { error: 'Patient name required' });
       const token = generateToken();
-      db.invitations[token] = { token, doctorId: doctor.id, patientName, note: note || '', createdAt: Date.now(), usedAt: null, status: 'pending' };
-      saveData();
+      await query(
+        'INSERT INTO invitations (token, doctor_id, patient_name, note, status, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
+        [token, doctor.id, patientName, note || '', 'pending', Date.now()]
+      );
       return sendJSON(res, 200, { ok: true, token });
     }
 
     if (url.startsWith('/api/invitations/') && req.method === 'DELETE') {
       if (!doctor) return sendJSON(res, 401, { error: 'Not authenticated' });
       const token = url.replace('/api/invitations/', '');
-      const inv = db.invitations[token];
-      if (!inv || inv.doctorId !== doctor.id) return sendJSON(res, 404, { error: 'Not found' });
-      delete db.invitations[token];
-      saveData();
+      const r = await query('SELECT doctor_id FROM invitations WHERE token = $1', [token]);
+      if (!r.rows.length || r.rows[0].doctor_id !== doctor.id)
+        return sendJSON(res, 404, { error: 'Not found' });
+      await query('DELETE FROM invitations WHERE token = $1', [token]);
       return sendJSON(res, 200, { ok: true });
     }
 
@@ -494,9 +532,11 @@ const server = http.createServer(async (req, res) => {
       const proto  = req.headers['x-forwarded-proto'] || 'http';
       const host   = req.headers.host || `localhost:${PORT}`;
       const origin = `${proto}://${host}`;
-      const myInvs = Object.values(db.invitations)
-        .filter(i => i.doctorId === doctor.id)
-        .sort((a, b) => b.createdAt - a.createdAt);
+      const r = await query(
+        'SELECT * FROM invitations WHERE doctor_id = $1 ORDER BY created_at DESC',
+        [doctor.id]
+      );
+      const myInvs = r.rows.map(rowToInv);
       return sendHTML(res, buildDashboardHTML(doctor, myInvs, origin));
     }
 
@@ -511,20 +551,25 @@ const server = http.createServer(async (req, res) => {
     // Patient landing: /patient/:token
     const patMatch = url.match(/^\/patient\/([a-f0-9]{40})$/);
     if (patMatch) {
-      const inv = db.invitations[patMatch[1]];
+      const r = await query('SELECT * FROM invitations WHERE token = $1', [patMatch[1]]);
+      const inv = r.rows[0] ? rowToInv(r.rows[0]) : null;
       if (!inv || inv.status === 'expired') return sendHTML(res, errorPage('This invitation link has expired or is invalid.'), 404);
       if (inv.status === 'used') return sendHTML(res, errorPage('This session has already been completed. Please ask your doctor for a new link.'), 410);
-      const doc = db.doctors[inv.doctorId];
+      const dr = await query('SELECT * FROM doctors WHERE id = $1', [inv.doctorId]);
+      const doc = dr.rows[0] ? rowToDoctor(dr.rows[0]) : null;
       return sendHTML(res, buildPatientLandingHTML(inv, doc));
     }
 
     // Patient session start: /patient/:token/start
     const patStart = url.match(/^\/patient\/([a-f0-9]{40})\/start$/);
     if (patStart) {
-      const inv = db.invitations[patStart[1]];
+      const r = await query('SELECT * FROM invitations WHERE token = $1', [patStart[1]]);
+      const inv = r.rows[0] ? rowToInv(r.rows[0]) : null;
       if (!inv || inv.status === 'expired') return sendHTML(res, errorPage('This invitation link has expired or is invalid.'), 404);
       if (inv.status === 'used') return sendHTML(res, errorPage('This session has already been completed.'), 410);
-      if (inv.status === 'pending') { inv.status = 'active'; inv.usedAt = Date.now(); saveData(); }
+      if (inv.status === 'pending') {
+        await query('UPDATE invitations SET status=$1, used_at=$2 WHERE token=$3', ['active', Date.now(), patStart[1]]);
+      }
       if (!STATIC.patient) { res.writeHead(503); res.end('patient.html not loaded'); return; }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': STATIC.patient.length, 'Cache-Control': 'no-store' });
       res.end(STATIC.patient);
@@ -552,7 +597,7 @@ function getRoom(doctorId) {
 if (WebSocketServer) {
   const wss = new WebSocketServer({ server, maxPayload: MAX_MESSAGE_BYTES });
 
-  wss.on('connection', (ws, req) => {
+  wss.on('connection', async (ws, req) => {
     const wsPath = (req.url||'').split('?')[0];
     if (wsPath !== '/ws') { ws.close(1008, 'Invalid path'); return; }
     const params = new URLSearchParams((req.url||'').split('?')[1]||'');
@@ -561,10 +606,9 @@ if (WebSocketServer) {
 
     // ── Doctor WebSocket ────────────────────────────────────────────────────
     if (role === 'doctor') {
-      // Verify via cookie in upgrade request headers
       const upgCookies = {};
       (req.headers.cookie||'').split(';').forEach(p=>{const[k,...v]=p.trim().split('=');if(k)upgCookies[k.trim()]=v.join('=');});
-      const d = getSessionDoctor(upgCookies['cg_session']);
+      const d = await getSessionDoctor(upgCookies['cg_session']);
       if (!d) { ws.close(1008, 'Unauthorized'); return; }
 
       const room = getRoom(d.id);
@@ -574,24 +618,27 @@ if (WebSocketServer) {
 
       ws.on('close', () => { room.doctors.delete(ws); console.log(`[WS] -doctor(${d.name})`); });
       ws.on('error', err => { console.error('[WS] doctor error:', err.message); room.doctors.delete(ws); });
-      ws.on('message', () => {}); // doctors are receive-only for now
+      ws.on('message', () => {});
       return;
     }
 
     // ── Patient WebSocket ───────────────────────────────────────────────────
     if (role === 'patient') {
-      const inv = db.invitations[token];
+      const r = await query('SELECT * FROM invitations WHERE token = $1', [token]);
+      const inv = r.rows[0] ? rowToInv(r.rows[0]) : null;
       if (!inv || (inv.status !== 'active' && inv.status !== 'pending')) {
         ws.close(1008, 'Invalid or expired token'); return;
       }
 
       const room = getRoom(inv.doctorId);
-      // One patient at a time per room
       if (room.patient && room.patient.readyState === 1) {
         ws.close(1008, 'Session busy — another patient is already connected'); return;
       }
 
-      if (inv.status === 'pending') { inv.status = 'active'; inv.usedAt = Date.now(); saveData(); }
+      if (inv.status === 'pending') {
+        await query('UPDATE invitations SET status=$1, used_at=$2 WHERE token=$3', ['active', Date.now(), token]);
+        inv.status = 'active';
+      }
 
       room.patient  = ws;
       room.invToken = token;
@@ -606,11 +653,14 @@ if (WebSocketServer) {
         }
       });
 
-      ws.on('close', () => {
+      ws.on('close', async () => {
         if (room.patient === ws) {
           room.patient  = null;
           room.invToken = null;
-          if (inv.status === 'active') { inv.status = 'used'; saveData(); }
+          if (inv.status === 'active') {
+            await query('UPDATE invitations SET status=$1 WHERE token=$2', ['used', token]);
+            inv.status = 'used';
+          }
           console.log(`[WS] -patient(${inv.patientName}) room=${inv.doctorId}`);
         }
       });
@@ -626,14 +676,20 @@ if (WebSocketServer) {
   });
 }
 
-server.listen(PORT, () => {
-  console.log(`CenterGaze v2 on :${PORT}`);
-  console.log(`  Login    → http://localhost:${PORT}/login`);
-  console.log(`  Sessions → http://localhost:${PORT}/sessions`);
-  console.log(`  Monitor  → http://localhost:${PORT}/doctor`);
+// ── Start ──────────────────────────────────────────────────────────────────────
+initDB().then(() => {
+  server.listen(PORT, () => {
+    console.log(`CenterGaze v3 (postgres) on :${PORT}`);
+    console.log(`  Login    -> http://localhost:${PORT}/login`);
+    console.log(`  Sessions -> http://localhost:${PORT}/sessions`);
+    console.log(`  Monitor  -> http://localhost:${PORT}/doctor`);
 
-  setInterval(() => {
-    const mem = process.memoryUsage();
-    console.log(`[health] rss=${(mem.rss/1e6).toFixed(1)}MB heap=${(mem.heapUsed/1e6).toFixed(1)}/${(mem.heapTotal/1e6).toFixed(1)}MB rooms=${Object.keys(rooms).length} patients=${Object.values(rooms).filter(r=>r.patient).length}`);
-  }, 60_000);
+    setInterval(() => {
+      const mem = process.memoryUsage();
+      console.log(`[health] rss=${(mem.rss/1e6).toFixed(1)}MB heap=${(mem.heapUsed/1e6).toFixed(1)}/${(mem.heapTotal/1e6).toFixed(1)}MB rooms=${Object.keys(rooms).length} patients=${Object.values(rooms).filter(r=>r.patient).length}`);
+    }, 60_000);
+  });
+}).catch(err => {
+  console.error('[FATAL] DB init failed:', err);
+  process.exit(1);
 });
