@@ -1063,31 +1063,23 @@ function recordVFTResponse(posId, luminance, hit) {
     globalHi = Math.min(255, mid + 1);
   }
 
-  // Store this position's best estimate = current midpoint
-  s.threshold = Math.round((globalLo + globalHi) / 2);
+  // Remove this position from the current sweep queue
+  positionQueue = positionQueue.filter(p => p.id !== posId);
 
-  // If global bracket has converged, mark ALL positions done immediately
+  // Global bracket converged — stamp ALL positions with the final value and end
   if ((globalHi - globalLo) <= DONE_GAP) {
     const finalThreshold = Math.round((globalLo + globalHi) / 2);
     VFT_POSITIONS.forEach(p => {
-      if (!vftState[p.id].threshold) vftState[p.id].threshold = finalThreshold;
+      vftState[p.id].threshold = finalThreshold;
       vftState[p.id].done = true;
     });
     return;
   }
 
-  // Mark this position done — it has its estimate
-  s.done = true;
-
-  // Remove from queue since it's been visited
-  positionQueue = positionQueue.filter(p => p.id !== posId);
-
-  // If queue is empty but positions remain undone, refill with undone positions
-  // (shuffled so we visit them in varied order)
+  // Queue empty = sweep complete. Start a new sweep at the narrowed luminance.
+  // Every position gets re-tested — nobody keeps a stale early estimate.
   if (positionQueue.length === 0) {
-    positionQueue = VFT_POSITIONS
-      .filter(p => !vftState[p.id].done)
-      .sort(() => Math.random() - 0.5);
+    positionQueue = [...VFT_POSITIONS].sort(() => Math.random() - 0.5);
   }
 }
 
@@ -1097,16 +1089,14 @@ function getThresholdEstimate(posId) {
   return Math.round((globalLo + globalHi) / 2);
 }
 
-// Always pick the next position from the queue (never repeat until all visited)
+// Always pull from the current sweep queue
 function getNextPosId() {
-  // Filter out any that became done via global convergence
   positionQueue = positionQueue.filter(p => !vftState[p.id].done);
   if (positionQueue.length === 0) return null;
 
   const lastPosId = vftActiveTrial ? vftActiveTrial.posId : null;
-  // Skip last pos if possible to avoid showing same spot twice
   if (positionQueue.length > 1 && positionQueue[0].id === lastPosId) {
-    positionQueue.push(positionQueue.shift()); // rotate it to the back
+    positionQueue.push(positionQueue.shift());
   }
 
   return positionQueue[0].id;
@@ -1312,10 +1302,13 @@ function runVFTTrial() {
   drawVFTScene(posId, lum);
 
   const totalResponses = VFT_POSITIONS.reduce((acc, p) => acc + vftState[p.id].responses.length, 0);
-  const estTotal = vftEstimatedTotal();
-  const pct = Math.min(99, (totalResponses / estTotal) * 100);
-  document.getElementById('vftProgressFill').style.width = pct + '%';
   vftTrialIndex = totalResponses + 1;
+  // Progress reflects how much of the luminance range has been eliminated,
+  // not trial count — so the bar moves proportionally to actual convergence.
+  const totalRange = 255 - DONE_GAP;
+  const remaining = Math.max(0, (globalHi - globalLo) - DONE_GAP);
+  const pct = Math.min(99, ((totalRange - remaining) / totalRange) * 100);
+  document.getElementById('vftProgressFill').style.width = pct + '%';
 
   sendGazeData({ type: 'vft_stim', trialIndex: totalResponses, posId, luminance: lum, ts: Date.now() });
 
