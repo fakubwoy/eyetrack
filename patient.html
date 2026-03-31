@@ -992,40 +992,39 @@ const VFT_POSITIONS = [
 
 let vftState = {};
 
-// ─── PURE BINARY SEARCH + ROUND-ROBIN INTERLEAVING ───────────────────────────
+// ─── GLOBAL BINARY SEARCH — SHARED LUMINANCE ACROSS ALL POSITIONS ────────────
 //
-// Strategy: treat each of the 16 positions as an independent binary search
-// over [0, 255]. Each trial bisects the current [lo, hi] bracket of one
-// position. Positions are visited in round-robin order so every position
-// gets a new trial before any position gets a second — the patient never
-// sees the same spot twice in a row, and the test feels fast because
-// different parts of the visual field are exercised every stimulus.
+// One shared [globalLo, globalHi] bracket. Every response — hit or miss —
+// immediately bisects that bracket. The very next dot, at a completely
+// different position, is shown at the new midpoint.
 //
-// Convergence: a position is done when (hi - lo) ≤ DONE_GAP (8 lum units).
-// At 8 lum units that is ~3% of full scale — more than precise enough for VFT.
-// Binary search on [0,255] needs at most ceil(log2(256/8)) = 5 bisections,
-// so the whole test takes at most 16×5 = 80 trials, typically far fewer
-// because spatial transfer pre-narrows neighbours.
+// Flow:
+//   response → update globalLo/globalHi → next pos gets midpoint of that bracket
 //
-// Spatial transfer: when a position converges, its threshold is broadcast to
-// immediate neighbours (within 0.4 grid units), halving their remaining range.
-// This creates a cascade — a field that's uniform in sensitivity converges
-// in roughly 16×2 = 32 trials total.
+// Each position only needs ONE trial to get its threshold estimate: the global
+// luminance at the time it was tested. Once the global bracket is tight
+// (hi - lo ≤ DONE_GAP), all remaining positions are stamped with the final
+// midpoint and the test ends. Typically finishes in ~20-30 trials total.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DONE_GAP = 8; // lum units — position is done when hi-lo ≤ this
+const DONE_GAP = 6;
 
-// Round-robin cursor — advances through active positions one at a time
-let vftRoundRobinIdx = 0;
+let globalLo  = 0;
+let globalHi  = 255;
+// Track which positions have been shown at least once (have a threshold estimate)
+// vs positions that still need a trial at the current global luminance.
+let positionQueue = []; // positions not yet tested at the current lum level
 
 function initVFTState() {
-  vftRoundRobinIdx = 0;
+  globalLo = 0;
+  globalHi = 255;
+  // Shuffle positions so the patient sees all quadrants early
+  positionQueue = [...VFT_POSITIONS].sort(() => Math.random() - 0.5);
   VFT_POSITIONS.forEach(p => {
     vftState[p.id] = {
-      lo: 0,
-      hi: 255,
-      responses: [],   // {luminance, hit}
+      threshold: null,  // set once we have a confident estimate
+      responses: [],
       done: false
     };
   });
@@ -1036,99 +1035,81 @@ function isVFTDone() {
 }
 
 function vftEstimatedTotal() {
-  // ceil(log2(256/DONE_GAP)) bisections × 16 positions, minus spatial-transfer savings
-  return VFT_POSITIONS.length * 5;
+  // Each bisection covers all 16 positions, need ~5 bisections → ~80 trials max
+  // but global convergence means we often finish in 20-30
+  return 30;
 }
 
-// Next luminance to show for posId — always the midpoint of [lo, hi]
+// The luminance for the next trial is always the current global midpoint
 function getNextLuminance(posId) {
-  const s = vftState[posId];
-  return Math.round((s.lo + s.hi) / 2);
-}
-
-// Spatial transfer: broadcast a converged threshold to immediate neighbours
-function propagateThreshold(donePosId) {
-  const threshold = getThresholdEstimate(donePosId);
-  if (threshold === null) return;
-
-  const srcPos = VFT_POSITIONS.find(p => p.id === donePosId);
-  const TRANSFER_RADIUS = 0.45; // slightly wider — catches diagonal neighbours too
-
-  VFT_POSITIONS.forEach(p => {
-    if (p.id === donePosId) return;
-    const nb = vftState[p.id];
-    if (nb.done) return;
-
-    const dist = Math.sqrt((p.dx - srcPos.dx) ** 2 + (p.dy - srcPos.dy) ** 2);
-    if (dist > TRANSFER_RADIUS) return;
-
-    // Constrain neighbour bracket to [threshold ± margin].
-    // Use half the remaining interval so we always narrow, never widen.
-    const margin = Math.max(30, Math.round((nb.hi - nb.lo) / 2));
-    const newLo  = threshold - margin;
-    const newHi  = threshold + margin;
-
-    if (newLo > nb.lo) nb.lo = Math.max(0,   newLo);
-    if (newHi < nb.hi) nb.hi = Math.min(255, newHi);
-
-    // Re-check convergence — transfer might have already finished the neighbour
-    if ((nb.hi - nb.lo) <= DONE_GAP && nb.responses.length > 0) {
-      nb.done = true;
-      propagateThreshold(p.id); // cascade
-    }
-  });
+  return Math.round((globalLo + globalHi) / 2);
 }
 
 function recordVFTResponse(posId, luminance, hit) {
   const s = vftState[posId];
   s.responses.push({ luminance, hit });
 
-  // Pure binary search bracket update
+  // Update the GLOBAL bracket — every response informs everyone
   if (hit) {
-    s.hi = Math.min(s.hi, luminance); // saw it → threshold is ≤ this
+    globalHi = Math.min(globalHi, luminance);
   } else {
-    s.lo = Math.max(s.lo, luminance); // missed → threshold is > this
+    globalLo = Math.max(globalLo, luminance);
   }
 
-  // Guard: lo must stay below hi
-  if (s.lo >= s.hi) {
-    const mid = Math.round((s.lo + s.hi) / 2);
-    s.lo = Math.max(0,   mid - 1);
-    s.hi = Math.min(255, mid + 1);
+  // Guard
+  if (globalLo >= globalHi) {
+    const mid = Math.round((globalLo + globalHi) / 2);
+    globalLo = Math.max(0,   mid - 1);
+    globalHi = Math.min(255, mid + 1);
   }
 
-  // Converged?
-  if ((s.hi - s.lo) <= DONE_GAP) {
-    s.done = true;
-    propagateThreshold(posId);
+  // Store this position's best estimate = current midpoint
+  s.threshold = Math.round((globalLo + globalHi) / 2);
+
+  // If global bracket has converged, mark ALL positions done immediately
+  if ((globalHi - globalLo) <= DONE_GAP) {
+    const finalThreshold = Math.round((globalLo + globalHi) / 2);
+    VFT_POSITIONS.forEach(p => {
+      if (!vftState[p.id].threshold) vftState[p.id].threshold = finalThreshold;
+      vftState[p.id].done = true;
+    });
+    return;
+  }
+
+  // Mark this position done — it has its estimate
+  s.done = true;
+
+  // Remove from queue since it's been visited
+  positionQueue = positionQueue.filter(p => p.id !== posId);
+
+  // If queue is empty but positions remain undone, refill with undone positions
+  // (shuffled so we visit them in varied order)
+  if (positionQueue.length === 0) {
+    positionQueue = VFT_POSITIONS
+      .filter(p => !vftState[p.id].done)
+      .sort(() => Math.random() - 0.5);
   }
 }
 
 function getThresholdEstimate(posId) {
   const s = vftState[posId];
-  if (s.responses.length === 0) return Math.round((s.lo + s.hi) / 2);
-
-  const hits   = s.responses.filter(r =>  r.hit).map(r => r.luminance);
-  const misses = s.responses.filter(r => !r.hit).map(r => r.luminance);
-
-  if (hits.length === 0)   return Math.round((s.lo + s.hi) / 2);
-  if (misses.length === 0) return Math.round((s.lo + s.hi) / 2);
-
-  // Threshold = midpoint between lowest seen and highest missed
-  return Math.round((Math.min(...hits) + Math.max(...misses)) / 2);
+  if (s.threshold !== null) return s.threshold;
+  return Math.round((globalLo + globalHi) / 2);
 }
 
-// Round-robin scheduler: cycle through all incomplete positions in order.
-// Never revisit the same position twice in a row unless only one is left.
+// Always pick the next position from the queue (never repeat until all visited)
 function getNextPosId() {
-  const active = VFT_POSITIONS.filter(p => !vftState[p.id].done);
-  if (active.length === 0) return null;
+  // Filter out any that became done via global convergence
+  positionQueue = positionQueue.filter(p => !vftState[p.id].done);
+  if (positionQueue.length === 0) return null;
 
-  // Advance cursor, wrapping around the active list
-  vftRoundRobinIdx = vftRoundRobinIdx % active.length;
-  const chosen = active[vftRoundRobinIdx].id;
-  vftRoundRobinIdx = (vftRoundRobinIdx + 1) % active.length;
-  return chosen;
+  const lastPosId = vftActiveTrial ? vftActiveTrial.posId : null;
+  // Skip last pos if possible to avoid showing same spot twice
+  if (positionQueue.length > 1 && positionQueue[0].id === lastPosId) {
+    positionQueue.push(positionQueue.shift()); // rotate it to the back
+  }
+
+  return positionQueue[0].id;
 }
 
 // ── Per-trial state (single source of truth) ──────────────────────────────
