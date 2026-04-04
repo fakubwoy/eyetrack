@@ -617,6 +617,19 @@ async function viewSummary(token) {
           html += quadCell('Lower-Left',  bl);
           html += quadCell('Lower-Right', br);
           html += '</div>';
+
+          // ── Per-position 4×4 grid ─────────────────────────────────────────
+          html += '<div class="modal-section-title" style="font-size:9px;margin-bottom:8px;margin-top:4px;">Per-Position Sensitivity Map — ' + eye.charAt(0).toUpperCase()+eye.slice(1) + ' Eye</div>';
+          html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;max-width:220px;margin-bottom:14px;">';
+          const POS_GRID = ['R1C1','R1C2','R1C3','R1C4','R2C1','R2C2','R2C3','R2C4','R3C1','R3C2','R3C3','R3C4','R4C1','R4C2','R4C3','R4C4'];
+          POS_GRID.forEach(posId => {
+            const val = th[posId];
+            const bg = posThreshBg(val);
+            const textColor = (val !== null && val !== undefined) ? 'rgba(0,0,0,0.75)' : 'var(--muted)';
+            html += '<div title="' + posId + ': ' + (val !== null && val !== undefined ? val : '—') + '" style="background:' + bg + ';border-radius:4px;display:flex;align-items:center;justify-content:center;height:36px;font-size:9px;font-weight:700;color:' + textColor + ';">' +
+              (val !== null && val !== undefined ? val : '—') + '</div>';
+          });
+          html += '</div>';
         });
         html += '</div>';
       }
@@ -649,6 +662,14 @@ function quadCell(pos, val) {
   const color = sensitivityColor(val);
   const lbl = sensitivityLabel(val);
   return '<div class="quad-cell"><div class="quad-cell-pos">'+pos+'</div><div class="quad-cell-val" style="color:'+color+'">'+(val !== null && val !== undefined ? val : '—')+'</div><div class="quad-cell-lbl">'+lbl+'</div></div>';
+}
+// Background colour for a per-position threshold cell (matches doctor.html colours)
+function posThreshBg(val) {
+  if (val === null || val === undefined) return 'var(--surface2)';
+  if (val <= 60)  return '#00f0b0';
+  if (val <= 120) return '#7adcff';
+  if (val <= 180) return '#ffb830';
+  return '#ff3a5c';
 }
 function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

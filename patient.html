@@ -958,7 +958,7 @@ async function loop() {
   requestAnimationFrame(loop);
 }
 
-// ===== VISUAL FIELD TEST — Adaptive Staircase =====
+// ===== VISUAL FIELD TEST — Two-Phase Per-Dot Adaptive Staircase =====
 // ─── Race-condition-free design ───────────────────────────────────────────
 //  Each trial has a unique numeric ID (vftCurrentTrialId).
 //  Every timeout callback checks that its ID still matches before acting.
@@ -968,145 +968,197 @@ async function loop() {
 //  already finalised (hit, miss, or the VFT has been stopped).
 // ─────────────────────────────────────────────────────────────────────────
 
-const VFT_STIM_DURATION = 220; // ms stimulus on-screen (still clearly visible)
-const VFT_ISI = [650, 1050];   // slightly wider ISI — gives patient time to reset after slow responses
-const VFT_GRACE = 750;         // ms after stim-off — covers up to ~970ms total RT from stim start
-                               // Patient RT data: median ~535ms, max observed ~707ms.
-                               // 220 + 750 = 970ms total window gives ~37% headroom above max RT.
+const VFT_STIM_DURATION = 220;
+const VFT_ISI = [650, 1050];
+const VFT_GRACE = 750;
 
-// 4×4 grid of 16 test positions.
-// dx/dy are fractions of half-screen (so dx=0.12 → 12% of half-width from centre).
-// Rows top→bottom: dy ∈ {-0.30, -0.12, +0.12, +0.30}
-// Cols left→right: dx ∈ {-0.30, -0.10, +0.10, +0.30}
+// ── Binary-search staircase config ───────────────────────────────────────────
+// Phase 1: 3 trials on each of the 4 central dots to bracket their threshold.
+//   Each HIT  → intensity halves  (128→64→32→16…)
+//   Each MISS → intensity doubles (128→192… or from wherever it currently is)
+//   The "bracket" after N trials is [last_miss, last_hit].
+//   Final Phase-1 threshold per dot = midpoint of that bracket.
+//
+// Phase 2: all 16 dots, each starting at the threshold inherited from its
+//   quadrant parent (central dot). Same binary-search rule, 4 trials per dot.
+//
+// Total trials: 4×3 (phase1) + 16×4 (phase2) = 76
+const P1_TRIALS_PER_DOT = 3;   // trials per central dot in phase 1
+const P2_TRIALS_PER_DOT = 4;   // trials per dot in phase 2
+
+// 4×4 grid
 const VFT_POSITIONS = [
-  { id: 'R1C1', label: 'Row1-Col1', dx: -0.30, dy: -0.30 },
-  { id: 'R1C2', label: 'Row1-Col2', dx: -0.10, dy: -0.30 },
-  { id: 'R1C3', label: 'Row1-Col3', dx:  0.10, dy: -0.30 },
-  { id: 'R1C4', label: 'Row1-Col4', dx:  0.30, dy: -0.30 },
-  { id: 'R2C1', label: 'Row2-Col1', dx: -0.30, dy: -0.10 },
-  { id: 'R2C2', label: 'Row2-Col2', dx: -0.10, dy: -0.10 },
-  { id: 'R2C3', label: 'Row2-Col3', dx:  0.10, dy: -0.10 },
-  { id: 'R2C4', label: 'Row2-Col4', dx:  0.30, dy: -0.10 },
-  { id: 'R3C1', label: 'Row3-Col1', dx: -0.30, dy:  0.10 },
-  { id: 'R3C2', label: 'Row3-Col2', dx: -0.10, dy:  0.10 },
-  { id: 'R3C3', label: 'Row3-Col3', dx:  0.10, dy:  0.10 },
-  { id: 'R3C4', label: 'Row3-Col4', dx:  0.30, dy:  0.10 },
-  { id: 'R4C1', label: 'Row4-Col1', dx: -0.30, dy:  0.30 },
-  { id: 'R4C2', label: 'Row4-Col2', dx: -0.10, dy:  0.30 },
-  { id: 'R4C3', label: 'Row4-Col3', dx:  0.10, dy:  0.30 },
-  { id: 'R4C4', label: 'Row4-Col4', dx:  0.30, dy:  0.30 },
+  { id:'R1C1', label:'Row1-Col1', dx:-0.30, dy:-0.30 },
+  { id:'R1C2', label:'Row1-Col2', dx:-0.10, dy:-0.30 },
+  { id:'R1C3', label:'Row1-Col3', dx: 0.10, dy:-0.30 },
+  { id:'R1C4', label:'Row1-Col4', dx: 0.30, dy:-0.30 },
+  { id:'R2C1', label:'Row2-Col1', dx:-0.30, dy:-0.10 },
+  { id:'R2C2', label:'Row2-Col2', dx:-0.10, dy:-0.10 },
+  { id:'R2C3', label:'Row2-Col3', dx: 0.10, dy:-0.10 },
+  { id:'R2C4', label:'Row2-Col4', dx: 0.30, dy:-0.10 },
+  { id:'R3C1', label:'Row3-Col1', dx:-0.30, dy: 0.10 },
+  { id:'R3C2', label:'Row3-Col2', dx:-0.10, dy: 0.10 },
+  { id:'R3C3', label:'Row3-Col3', dx: 0.10, dy: 0.10 },
+  { id:'R3C4', label:'Row3-Col4', dx: 0.30, dy: 0.10 },
+  { id:'R4C1', label:'Row4-Col1', dx:-0.30, dy: 0.30 },
+  { id:'R4C2', label:'Row4-Col2', dx:-0.10, dy: 0.30 },
+  { id:'R4C3', label:'Row4-Col3', dx: 0.10, dy: 0.30 },
+  { id:'R4C4', label:'Row4-Col4', dx: 0.30, dy: 0.30 },
 ];
 
-let vftState = {};
+const VFT_CENTRAL_DOTS = ['R2C2','R2C3','R3C2','R3C3'];
 
-// ─── GLOBAL BINARY SEARCH — SHARED LUMINANCE ACROSS ALL POSITIONS ────────────
-//
-// One shared [globalLo, globalHi] bracket. Every response — hit or miss —
-// immediately bisects that bracket. The very next dot, at a completely
-// different position, is shown at the new midpoint.
-//
-// Flow:
-//   response → update globalLo/globalHi → next pos gets midpoint of that bracket
-//
-// Each position only needs ONE trial to get its threshold estimate: the global
-// luminance at the time it was tested. Once the global bracket is tight
-// (hi - lo ≤ DONE_GAP), all remaining positions are stamped with the final
-// midpoint and the test ends. Typically finishes in ~20-30 trials total.
-//
-// ─────────────────────────────────────────────────────────────────────────────
+// Each peripheral dot starts phase 2 from its nearest central dot's result
+const VFT_QUADRANT_PARENT = {
+  R1C1:'R2C2', R1C2:'R2C2', R2C1:'R2C2', R2C2:'R2C2',
+  R1C3:'R2C3', R1C4:'R2C3', R2C3:'R2C3', R2C4:'R2C3',
+  R3C1:'R3C2', R3C2:'R3C2', R4C1:'R3C2', R4C2:'R3C2',
+  R3C3:'R3C3', R3C4:'R3C3', R4C3:'R3C3', R4C4:'R3C3',
+};
 
-const DONE_GAP = 6;
+// ── Per-dot state ─────────────────────────────────────────────────────────────
+// vftDot[posId] = {
+//   intensity : luminance to show on the NEXT trial for this dot
+//   lo        : lower bound of the search bracket (last luminance that was MISSED)
+//   hi        : upper bound of the search bracket (last luminance that was HIT)
+//   trialsLeft: how many trials remain for this dot
+//   responses : [{luminance, hit}, …]
+//   done      : true when trialsLeft === 0
+//   threshold : final midpoint of [lo, hi] — set when done
+// }
+let vftDot = {};
+let vftPhase = 'phase1';   // 'phase1' | 'phase2'
 
-let globalLo  = 0;
-let globalHi  = 255;
-// Track which positions have been shown at least once (have a threshold estimate)
-// vs positions that still need a trial at the current global luminance.
-let positionQueue = []; // positions not yet tested at the current lum level
+// Queue of posIds still to be tested this interleave round (shuffled)
+let vftQueue = [];
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, Math.round(v))); }
+
+function initDot(posId, startIntensity, trialsAllowed) {
+  const i = clamp(startIntensity, 1, 255);
+  vftDot[posId] = {
+    intensity:  i,
+    lo:         0,    // highest luminance that was MISSED so far
+    hi:         255,  // lowest luminance that was HIT so far
+    trialsLeft: trialsAllowed,
+    responses:  [],
+    done:       false,
+    threshold:  null,
+  };
+}
+
+// Apply one binary-search response to a dot's state
+function applyResponse(posId, luminance, hit) {
+  const d = vftDot[posId];
+  d.responses.push({ luminance, hit });
+  d.trialsLeft--;
+
+  if (hit) {
+    // Patient saw it → it might be even dimmer → move DOWN
+    d.hi = Math.min(d.hi, luminance);
+    d.intensity = clamp(Math.floor(luminance / 2), 1, 255);
+  } else {
+    // Patient missed → too dim → move UP (halfway between current and hi)
+    d.lo = Math.max(d.lo, luminance);
+    d.intensity = clamp(Math.round((luminance + d.hi) / 2), 1, 255);
+  }
+
+  if (d.trialsLeft <= 0) {
+    d.done = true;
+    // Threshold = midpoint of the final bracket
+    d.threshold = clamp(Math.round((d.lo + d.hi) / 2), 0, 255);
+  }
+}
+
+function shuffled(arr) { return [...arr].sort(() => Math.random() - 0.5); }
+
+function undoneDotsIn(posIds) {
+  return posIds.filter(id => vftDot[id] && !vftDot[id].done);
+}
+
+// ── State init (called per eye) ───────────────────────────────────────────────
 function initVFTState() {
-  globalLo = 0;
-  globalHi = 255;
-  // Shuffle positions so the patient sees all quadrants early
-  positionQueue = [...VFT_POSITIONS].sort(() => Math.random() - 0.5);
+  vftPhase = 'phase1';
+  vftDot   = {};
+
+  // Phase 1: only the 4 central dots, starting at 128
+  VFT_CENTRAL_DOTS.forEach(id => initDot(id, 128, P1_TRIALS_PER_DOT));
+  // Initialise peripheral dots with a placeholder so getThresholdEstimate doesn't crash
   VFT_POSITIONS.forEach(p => {
-    vftState[p.id] = {
-      threshold: null,  // set once we have a confident estimate
-      responses: [],
-      done: false
-    };
+    if (!VFT_CENTRAL_DOTS.includes(p.id)) initDot(p.id, 128, 0); // trialsLeft=0, done=true placeholder
   });
+
+  vftQueue = shuffled(VFT_CENTRAL_DOTS);
 }
 
 function isVFTDone() {
-  return VFT_POSITIONS.every(p => vftState[p.id].done);
+  if (vftPhase === 'phase1') return false;
+  return VFT_POSITIONS.every(p => vftDot[p.id] && vftDot[p.id].done);
 }
 
 function vftEstimatedTotal() {
-  // Each bisection covers all 16 positions, need ~5 bisections → ~80 trials max
-  // but global convergence means we often finish in 20-30
-  return 30;
+  return VFT_CENTRAL_DOTS.length * P1_TRIALS_PER_DOT +
+         VFT_POSITIONS.length   * P2_TRIALS_PER_DOT;
 }
 
-// The luminance for the next trial is always the current global midpoint
 function getNextLuminance(posId) {
-  return Math.round((globalLo + globalHi) / 2);
+  return vftDot[posId] ? vftDot[posId].intensity : 128;
 }
 
 function recordVFTResponse(posId, luminance, hit) {
-  const s = vftState[posId];
-  s.responses.push({ luminance, hit });
+  applyResponse(posId, luminance, hit);
 
-  // Update the GLOBAL bracket — every response informs everyone
-  if (hit) {
-    globalHi = Math.min(globalHi, luminance);
-  } else {
-    globalLo = Math.max(globalLo, luminance);
-  }
+  // Remove from current queue
+  vftQueue = vftQueue.filter(id => id !== posId);
 
-  // Guard
-  if (globalLo >= globalHi) {
-    const mid = Math.round((globalLo + globalHi) / 2);
-    globalLo = Math.max(0,   mid - 1);
-    globalHi = Math.min(255, mid + 1);
-  }
+  if (vftPhase === 'phase1') {
+    const allP1Done = VFT_CENTRAL_DOTS.every(id => vftDot[id].done);
 
-  // Remove this position from the current sweep queue
-  positionQueue = positionQueue.filter(p => p.id !== posId);
+    if (allP1Done) {
+      // ── Transition → Phase 2 ─────────────────────────────────────────────
+      vftPhase = 'phase2';
 
-  // Global bracket converged — stamp ALL positions with the final value and end
-  if ((globalHi - globalLo) <= DONE_GAP) {
-    const finalThreshold = Math.round((globalLo + globalHi) / 2);
-    VFT_POSITIONS.forEach(p => {
-      vftState[p.id].threshold = finalThreshold;
-      vftState[p.id].done = true;
-    });
+      // Seed every dot from its quadrant parent's phase-1 threshold
+      VFT_POSITIONS.forEach(p => {
+        const parent    = VFT_QUADRANT_PARENT[p.id];
+        const parentThr = vftDot[parent] ? (vftDot[parent].threshold ?? 128) : 128;
+        initDot(p.id, parentThr, P2_TRIALS_PER_DOT);
+      });
+
+      vftQueue = shuffled(VFT_POSITIONS.map(p => p.id));
+      return;
+    }
+
+    // Refill queue for next round of phase 1 if it ran dry
+    if (vftQueue.length === 0) {
+      vftQueue = shuffled(undoneDotsIn(VFT_CENTRAL_DOTS));
+    }
     return;
   }
 
-  // Queue empty = sweep complete. Start a new sweep at the narrowed luminance.
-  // Every position gets re-tested — nobody keeps a stale early estimate.
-  if (positionQueue.length === 0) {
-    positionQueue = [...VFT_POSITIONS].sort(() => Math.random() - 0.5);
+  // Phase 2 queue refill
+  if (vftQueue.length === 0 && !isVFTDone()) {
+    vftQueue = shuffled(undoneDotsIn(VFT_POSITIONS.map(p => p.id)));
   }
 }
 
 function getThresholdEstimate(posId) {
-  const s = vftState[posId];
-  if (s.threshold !== null) return s.threshold;
-  return Math.round((globalLo + globalHi) / 2);
+  const d = vftDot[posId];
+  if (!d) return 128;
+  if (d.threshold !== null) return d.threshold;
+  // Live estimate while still running: midpoint of current bracket
+  return clamp(Math.round((d.lo + d.hi) / 2), 0, 255);
 }
 
-// Always pull from the current sweep queue
 function getNextPosId() {
-  positionQueue = positionQueue.filter(p => !vftState[p.id].done);
-  if (positionQueue.length === 0) return null;
-
-  const lastPosId = vftActiveTrial ? vftActiveTrial.posId : null;
-  if (positionQueue.length > 1 && positionQueue[0].id === lastPosId) {
-    positionQueue.push(positionQueue.shift());
+  if (vftQueue.length === 0) return null;
+  // Avoid showing same dot twice in a row
+  const last = vftActiveTrial ? vftActiveTrial.posId : null;
+  if (vftQueue.length > 1 && vftQueue[0] === last) {
+    vftQueue.push(vftQueue.shift());
   }
-
-  return positionQueue[0].id;
+  return vftQueue[0];
 }
 
 // ── Per-trial state (single source of truth) ──────────────────────────────
@@ -1220,7 +1272,7 @@ function launchVFT() {
   vftTrialLog = [];
 
   const estTotal = vftEstimatedTotal();
-  sendGazeData({ type: 'vft_start', eye: activeEye || 'both', ts: Date.now(), totalTrials: estTotal });
+  sendGazeData({ type: 'vft_start', eye: activeEye || 'both', phase: vftPhase, ts: Date.now(), totalTrials: estTotal });
 
   drawVFTScene(null, 0);
 
@@ -1308,16 +1360,18 @@ function runVFTTrial() {
 
   drawVFTScene(posId, lum);
 
-  const totalResponses = VFT_POSITIONS.reduce((acc, p) => acc + vftState[p.id].responses.length, 0);
+  const totalResponses = VFT_POSITIONS.reduce((acc, p) => {
+    const s = vftDot[p.id];
+    return acc + (s ? s.responses.length : 0);
+  }, 0);
   vftTrialIndex = totalResponses + 1;
-  // Progress reflects how much of the luminance range has been eliminated,
-  // not trial count — so the bar moves proportionally to actual convergence.
-  const totalRange = 255 - DONE_GAP;
-  const remaining = Math.max(0, (globalHi - globalLo) - DONE_GAP);
-  const pct = Math.min(99, ((totalRange - remaining) / totalRange) * 100);
+  const doneDots = VFT_POSITIONS.filter(p => vftDot[p.id] && vftDot[p.id].done).length;
+  const pct = Math.min(99, (doneDots / VFT_POSITIONS.length) * 100);
   document.getElementById('vftProgressFill').style.width = pct + '%';
 
-  sendGazeData({ type: 'vft_stim', trialIndex: totalResponses, posId, luminance: lum, ts: Date.now() });
+  const dotS = vftDot[posId] || {};
+  sendGazeData({ type: 'vft_stim', trialIndex: totalResponses, posId, luminance: lum,
+    phase: vftPhase, ts: Date.now() });
 
   // After STIM_DURATION: hide the dot, enter grace period
   vftStimTimer = setTimeout(() => {
@@ -1371,6 +1425,7 @@ function sendVFTTrialResult(trial, hit) {
   });
 
   const posInfo = VFT_POSITIONS.find(p => p.id === trial.posId);
+  const dotS = vftDot[trial.posId] || {};
   const trialEntry = {
     trial_number: vftTrialLog.length + 1,
     eye: activeEye || 'both',
@@ -1394,6 +1449,9 @@ function sendVFTTrialResult(trial, hit) {
     luminance: trial.luminance,
     hit,
     rt: trial.rt,
+    phase: vftPhase,
+    reversals: dotS.reversals || 0,
+    dotDone: dotS.done || false,
     thresholds,
     ts: Date.now()
   });
@@ -1415,6 +1473,7 @@ function endVFT() {
   sendGazeData({
     type: 'vft_complete',
     eye: completedEye,
+    phase: vftPhase,
     thresholds: finalThresholds,
     totalTrials: vftTrialIndex,
     trialLog: vftTrialLog,

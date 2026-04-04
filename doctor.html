@@ -279,11 +279,22 @@
   }
   .vft-cell.hit { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
   .vft-cell.miss { border-color: var(--danger); background: var(--danger-dim); color: var(--danger); }
+  /* Threshold colour applied via inline style on background; keep text readable */
+  .vft-cell.has-threshold { color: rgba(0,0,0,0.75); border-color: transparent; }
+  .vft-cell.has-threshold.active { border-color: var(--purple); }
   /* Quadrant label overlay in corner */
   .vft-cell[data-quad]::after {
     content: attr(data-quad);
     position: absolute; bottom: 1px; right: 2px;
-    font-size: 5px; color: rgba(255,255,255,0.15); font-weight: 400;
+    font-size: 5px; color: rgba(0,0,0,0.3); font-weight: 400;
+  }
+  /* Phase badge */
+  .vft-phase-badge {
+    display: inline-block;
+    font-size: 8px; letter-spacing: 1px; text-transform: uppercase;
+    background: rgba(180,143,255,0.15); border: 1px solid rgba(180,143,255,0.35);
+    color: var(--purple); border-radius: 3px; padding: 2px 7px;
+    margin-left: 6px; vertical-align: middle;
   }
 
   /* VFT threshold bars */
@@ -906,7 +917,12 @@ function handleMessage(d) {
     // Reset all 16 grid cells for the new eye
     VFT_ALL_IDS.forEach(id => {
       const el = vftCell(id);
-      if (el) { el.className = 'vft-cell'; el.textContent = id; }
+      if (el) {
+        el.className = 'vft-cell';
+        el.style.background = '';
+        el.style.borderColor = '';
+        el.textContent = id;
+      }
     });
   }
 
@@ -934,15 +950,21 @@ function handleMessage(d) {
     document.getElementById('csvDownloadBtn').classList.remove('show');
     document.getElementById('vftDot').className = 'vft-status-dot running';
     const eyeLabel = currentTestEye ? ` (${currentTestEye} eye)` : '';
-    document.getElementById('vftStatusLabel').textContent = `Test running${eyeLabel}`;
+    const phaseLabel = d.phase ? ` · ${d.phase === 'phase1' ? 'Phase 1: Central' : 'Phase 2: Full field'}` : '';
+    document.getElementById('vftStatusLabel').textContent = `Test running${eyeLabel}${phaseLabel}`;
     document.getElementById('vftStatusSub').textContent = `0/${vftTotalTrials}`;
     document.getElementById('vftProgressFill2').style.width = '0%';
-    document.getElementById('vftLiveLog').textContent = `Testing ${currentTestEye || '?'} eye…`;
-    addAlert(`Visual field test started — ${currentTestEye || '?'} eye`, 'p');
-    // Reset all 16 grid cells
+    document.getElementById('vftLiveLog').textContent = `Testing ${currentTestEye || '?'} eye — Phase 1 (central dots)…`;
+    addAlert(`Visual field test started — ${currentTestEye || '?'} eye · Phase 1`, 'p');
+    // Reset all 16 grid cells (clear threshold colours)
     VFT_ALL_IDS.forEach(id => {
       const el = vftCell(id);
-      if (el) { el.className = 'vft-cell'; el.textContent = id; }
+      if (el) {
+        el.className = 'vft-cell';
+        el.style.background = '';
+        el.style.borderColor = '';
+        el.textContent = id;
+      }
     });
     updateEyeTabs(currentTestEye, false);
   }
@@ -953,17 +975,19 @@ function handleMessage(d) {
     document.getElementById('vftStatusSub').textContent = `${vftTrialCount} trials`;
     const pct = vftTotalTrials ? Math.min(99, vftTrialCount / vftTotalTrials * 100) : 0;
     document.getElementById('vftProgressFill2').style.width = pct + '%';
-    document.getElementById('vftTrialCount').textContent = `${vftTrialCount} trials (adaptive)`;
-    // Highlight the active cell in the 4×4 grid
+    document.getElementById('vftTrialCount').textContent = `${vftTrialCount} trials · ${d.phase || ''} pass ${(d.passNumber||0)+1}`;
+    // Highlight the active cell; leave threshold colours on others
     VFT_ALL_IDS.forEach(id => {
       const el = vftCell(id);
       if (!el) return;
       if (id === d.posId) {
         el.classList.add('active');
+        el.style.background = '';   // let CSS .active style take over
+        el.style.borderColor = '';
         el.textContent = d.luminance;
       } else {
         el.classList.remove('active');
-        el.textContent = id;
+        // Restore threshold colour if available (don't reset text)
       }
     });
   }
@@ -975,18 +999,41 @@ function handleMessage(d) {
       if (d.hit) {
         el.classList.add('hit');
         el.textContent = d.luminance;
-        setTimeout(() => { el.classList.remove('hit'); el.textContent = d.posId; }, 800);
+        setTimeout(() => {
+          el.classList.remove('hit');
+          // After flash, restore threshold colour if available
+          if (d.thresholds && d.thresholds[d.posId] !== undefined) {
+            const bg = thresholdBgColor(d.thresholds[d.posId]);
+            el.style.background = bg; el.style.borderColor = 'transparent';
+            el.classList.add('has-threshold');
+            el.textContent = d.thresholds[d.posId];
+          } else {
+            el.textContent = d.posId;
+          }
+        }, 800);
       } else {
         el.classList.add('miss');
         el.textContent = d.luminance;
-        setTimeout(() => { el.classList.remove('miss'); el.textContent = d.posId; }, 800);
+        setTimeout(() => {
+          el.classList.remove('miss');
+          if (d.thresholds && d.thresholds[d.posId] !== undefined) {
+            const bg = thresholdBgColor(d.thresholds[d.posId]);
+            el.style.background = bg; el.style.borderColor = 'transparent';
+            el.classList.add('has-threshold');
+            el.textContent = d.thresholds[d.posId];
+          } else {
+            el.textContent = d.posId;
+          }
+        }, 800);
       }
     }
 
-    // Update per-eye thresholds live (aggregate 16→4 quadrants for the summary bars)
+    // Update the live threshold grid for all 16 positions
+    if (d.thresholds) updateVFTThresholds(d.thresholds);
+
     const eye = d.eye || currentTestEye;
-    if (d.thresholds && eye) updateDualEyeThresholds(eye, aggregateToQuadrants(d.thresholds));
-    addAlert(`VFT [${eye || '?'}] ${d.posId}: lum=${d.luminance} → ${d.hit ? 'SEEN' : 'MISSED'}${d.hit ? ` RT=${d.rt}ms` : ''}`, 'p');
+    const phaseLabel = d.phase ? ` [${d.phase === 'phase1' ? 'P1' : 'P2'} pass ${(d.passNumber||0)+1}]` : '';
+    addAlert(`VFT [${eye || '?'}]${phaseLabel} ${d.posId}: lum=${d.luminance} → ${d.hit ? 'SEEN' : 'MISSED'}${d.hit ? ` RT=${d.rt}ms` : ''}`, 'p');
   }
 
   if (d.type === 'vft_complete') {
@@ -1005,9 +1052,11 @@ function handleMessage(d) {
       vftCumulativeLog = d.cumulativeTrialLog;
     }
     if (d.thresholds) {
+      // Update the live colour-coded 4×4 grid with final thresholds
+      updateVFTThresholds(d.thresholds);
+
       if (eye) {
         vftEyeThresholds[eye] = d.thresholds;
-        // Aggregate the 16-position thresholds into 4 quadrant averages for display
         const quadThresh = aggregateToQuadrants(d.thresholds);
         updateDualEyeThresholds(eye, quadThresh);
         vftLastThresholds = d.thresholds;
@@ -1113,6 +1162,40 @@ function updateDualEyeThresholds(eye, thresholds) {
     // Invert: low threshold = better sensitivity = fuller bar
     if (fillEl)  fillEl.style.width = (((255 - val) / 255) * 100) + '%';
   });
+}
+
+// Colour-code the 4×4 grid cells with the live per-position threshold values.
+// Background colour: green (low = good) → blue → orange → red (high = poor).
+function thresholdBgColor(val) {
+  if (val === null || val === undefined) return null;
+  if (val <= 60)  return '#00f0b0';
+  if (val <= 120) return '#7adcff';
+  if (val <= 180) return '#ffb830';
+  return '#ff3a5c';
+}
+
+function updateVFTThresholds(thresholds) {
+  if (!thresholds) return;
+  VFT_ALL_IDS.forEach(posId => {
+    const el = vftCell(posId);
+    if (!el) return;
+    const val = thresholds[posId];
+    if (val === null || val === undefined) return;
+    const bg = thresholdBgColor(val);
+    el.style.background = bg;
+    el.style.borderColor = 'transparent';
+    el.classList.add('has-threshold');
+    // Only update text if cell is not currently showing the active stimulus
+    if (!el.classList.contains('active')) {
+      el.textContent = val;
+    }
+  });
+
+  // Also update the quadrant summary bars from the live per-position data
+  const eye = currentTestEye;
+  if (eye) {
+    updateDualEyeThresholds(eye, aggregateToQuadrants(thresholds));
+  }
 }
 
 function downloadVFTCSV(mode) {
@@ -1245,22 +1328,34 @@ function downloadVFTCSV(mode) {
       `# ─── Position Thresholds — ${eyeLabel} ────────────────────────────────`,
       row(['Location', 'Position ID', 'Eye', 'Threshold (0-255)', 'Sensitivity', 'Trials Run', 'Hit Rate']),
     ];
-    // Only emit rows for positions that appear in the trial log
     const posOrder = ['R1C1','R1C2','R1C3','R1C4','R2C1','R2C2','R2C3','R2C4','R3C1','R3C2','R3C3','R3C4','R4C1','R4C2','R4C3','R4C4'];
+    // Map position id → its dx/dy for field location labelling
+    const POS_META = {};
+    [
+      {id:'R1C1',dx:-0.30,dy:-0.30},{id:'R1C2',dx:-0.10,dy:-0.30},{id:'R1C3',dx:0.10,dy:-0.30},{id:'R1C4',dx:0.30,dy:-0.30},
+      {id:'R2C1',dx:-0.30,dy:-0.10},{id:'R2C2',dx:-0.10,dy:-0.10},{id:'R2C3',dx:0.10,dy:-0.10},{id:'R2C4',dx:0.30,dy:-0.10},
+      {id:'R3C1',dx:-0.30,dy:0.10}, {id:'R3C2',dx:-0.10,dy:0.10}, {id:'R3C3',dx:0.10,dy:0.10}, {id:'R3C4',dx:0.30,dy:0.10},
+      {id:'R4C1',dx:-0.30,dy:0.30}, {id:'R4C2',dx:-0.10,dy:0.30}, {id:'R4C3',dx:0.10,dy:0.30}, {id:'R4C4',dx:0.30,dy:0.30},
+    ].forEach(p => { POS_META[p.id] = p; });
+
     posOrder.forEach(posId => {
       const key = `${eye}::${posId}`;
       const altKey = `both::${posId}`;
       const info = testedPositions[key] || testedPositions[altKey];
-      if (!info) return; // not tested — skip entirely
       const val = th[posId];
-      const hitRate = info.trials > 0 ? `${info.hits}/${info.trials} (${Math.round(info.hits/info.trials*100)}%)` : '—';
+      const meta = POS_META[posId];
+      // If we have a threshold, emit the row (even if not in trial log — Phase 2 covers all)
+      if (val === null || val === undefined) return;
+      const hitRate = info && info.trials > 0
+        ? `${info.hits}/${info.trials} (${Math.round(info.hits/info.trials*100)}%)`
+        : (info ? '0/0' : '—');
       out.push(row([
-        fieldLocation(info.dx, info.dy),
+        fieldLocation(meta ? meta.dx : 0, meta ? meta.dy : 0),
         posId,
         eye,
         val !== null && val !== undefined ? val : '—',
         sensitivityLabel(val),
-        info.trials,
+        info ? info.trials : '—',
         hitRate
       ]));
     });
