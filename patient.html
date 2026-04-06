@@ -377,6 +377,71 @@
   }
   .eyesw-btn:hover { background: rgba(0,240,176,0.2); }
 
+  /* ===== TEST COMPLETE / THANK-YOU SCREEN ===== */
+  #testCompleteOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.97);
+    z-index: 400;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    text-align: center;
+    padding: 40px 32px;
+  }
+  #testCompleteOverlay.active { display: flex; }
+  .tc-icon {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: rgba(0,240,176,0.12);
+    border: 1.5px solid rgba(0,240,176,0.4);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent);
+    animation: tcPop 0.6s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+  @keyframes tcPop {
+    from { transform: scale(0); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+  .tc-title {
+    font-family: var(--sans);
+    font-size: 28px; font-weight: 800;
+    color: #fff; letter-spacing: -0.5px;
+    animation: tcFadeUp 0.5s 0.2s ease both;
+  }
+  .tc-title span { color: var(--accent); }
+  .tc-body {
+    font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--muted); max-width: 360px; line-height: 2.4;
+    animation: tcFadeUp 0.5s 0.35s ease both;
+  }
+  .tc-note {
+    font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+    color: rgba(0,240,176,0.6);
+    background: rgba(0,240,176,0.07);
+    border: 1px solid rgba(0,240,176,0.18);
+    border-radius: 6px; padding: 12px 24px;
+    max-width: 360px; line-height: 2.2;
+    animation: tcFadeUp 0.5s 0.5s ease both;
+  }
+  .tc-retake {
+    margin-top: 8px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--muted);
+    font-family: var(--mono); font-size: 9px;
+    letter-spacing: 2px; text-transform: uppercase;
+    padding: 10px 22px; border-radius: 4px;
+    cursor: pointer; transition: all 0.2s;
+    animation: tcFadeUp 0.5s 0.65s ease both;
+  }
+  .tc-retake:hover { border-color: rgba(255,255,255,0.25); color: var(--text); }
+  @keyframes tcFadeUp {
+    from { transform: translateY(12px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+
   /* Space press flash */
   #spaceFlash {
     position: fixed;
@@ -490,7 +555,11 @@
 <!-- Eye Switch Overlay -->
 <div id="eyeSwitchOverlay">
   <div class="eyesw-icon">
-    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.92-10.26l5.08 5.08"/></svg>
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+      <polyline points="23 4 23 10 17 10"></polyline>
+      <polyline points="1 20 1 14 7 14"></polyline>
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+    </svg>
   </div>
   <div class="eyesw-title">First Eye Complete!</div>
   <div class="eyesw-body">Results for your <span id="firstEyeLabel" style="color:var(--accent)">left</span> eye have been recorded.<br>Now switch — cover your <span id="firstEyeLabel2" style="color:var(--accent)">left</span> eye and open your <span id="secondEyeLabel" style="color:var(--purple)">right</span> eye.</div>
@@ -499,6 +568,24 @@
     Keep your head still and look at the red dot.
   </div>
   <button class="eyesw-btn" onclick="beginSecondEye()">Ready — Start <span id="secondEyeBtnLabel">Right</span> Eye Test →</button>
+</div>
+
+<!-- Test Complete / Thank-You Screen -->
+<div id="testCompleteOverlay">
+  <div class="tc-icon">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+  </div>
+  <div class="tc-title">Thank You<span>!</span></div>
+  <div class="tc-body">
+    Your visual field test is complete.<br>
+    Both eyes have been successfully tested<br>
+    and your results have been sent to your doctor.
+  </div>
+  <div class="tc-note">
+    ✓ You may close this window now.<br>
+    Your doctor will review the results shortly.
+  </div>
+  <button class="tc-retake" onclick="retakeTest()">↩ Retake Full Test</button>
 </div>
 
 <!-- Active eye badge shown during VFT -->
@@ -1365,8 +1452,27 @@ function runVFTTrial() {
     return acc + (s ? s.responses.length : 0);
   }, 0);
   vftTrialIndex = totalResponses + 1;
-  const doneDots = VFT_POSITIONS.filter(p => vftDot[p.id] && vftDot[p.id].done).length;
-  const pct = Math.min(99, (doneDots / VFT_POSITIONS.length) * 100);
+
+  // Progress: count completed trials across both phases vs estimated total
+  // Phase 1: 4 central dots × P1_TRIALS_PER_DOT each
+  // Phase 2: 16 dots × P2_TRIALS_PER_DOT each
+  // Central dots are re-initialised in phase 2 so we count their phase-2 responses separately.
+  const p1Responses = VFT_CENTRAL_DOTS.reduce((acc, id) => {
+    if (!vftDot[id]) return acc;
+    // In phase 1 each central dot runs P1_TRIALS_PER_DOT; cap at that so we don't double-count
+    return acc + Math.min(vftDot[id].responses.length, P1_TRIALS_PER_DOT);
+  }, 0);
+  const p2Responses = VFT_POSITIONS.reduce((acc, p) => {
+    if (!vftDot[p.id]) return acc;
+    // In phase 2 every dot (including the 4 central ones re-seeded) runs P2_TRIALS_PER_DOT
+    const responses = vftPhase === 'phase2'
+      ? Math.min(vftDot[p.id].responses.length, P2_TRIALS_PER_DOT)
+      : 0;
+    return acc + responses;
+  }, 0);
+  const completedTrials = vftPhase === 'phase1' ? p1Responses : (VFT_CENTRAL_DOTS.length * P1_TRIALS_PER_DOT) + p2Responses;
+  const estimatedTotal = vftEstimatedTotal();
+  const pct = Math.min(99, (completedTrials / estimatedTotal) * 100);
   document.getElementById('vftProgressFill').style.width = pct + '%';
 
   const dotS = vftDot[posId] || {};
@@ -1504,10 +1610,11 @@ function endVFT() {
     setTimeout(() => {
       document.getElementById('vftScreen').classList.remove('active');
       document.getElementById('activeEyeBadge').classList.remove('show');
-      document.getElementById('baselinePrompt').classList.add('show');
-      document.getElementById('vftStartBtn').classList.add('show');
-      document.getElementById('vftStartBtn').textContent = 'Retake Full Test';
-    }, 3000);
+      document.getElementById('fixationScreen').classList.remove('active');
+      document.getElementById('baselinePrompt').classList.remove('show');
+      document.getElementById('vftStartBtn').classList.remove('show');
+      document.getElementById('testCompleteOverlay').classList.add('active');
+    }, 2000);
   } else {
     vftCtx2.fillText('Results sent — switching to other eye…', W/2, H/2 + 16);
     setTimeout(() => {
@@ -1530,6 +1637,14 @@ function showErr(html) { const b=document.getElementById('errBox'); b.innerHTML=
 function loadScript(src) { return new Promise((res,rej)=>{ if(document.querySelector(`script[src="${src}"]`)){res();return;} const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('Script load failed')); document.head.appendChild(s); }); }
 
 // ===== Eye Selection Flow =====
+
+function retakeTest() {
+  document.getElementById('testCompleteOverlay').classList.remove('active');
+  document.getElementById('fixationScreen').classList.add('active');
+  document.getElementById('vftStartBtn').textContent = 'Retake Field Test';
+  document.getElementById('vftStartBtn').classList.add('show');
+  document.getElementById('baselinePrompt').classList.add('show');
+}
 
 function openEyeSelect() {
   document.getElementById('vftStartBtn').classList.remove('show');

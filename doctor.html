@@ -282,6 +282,8 @@
   /* Threshold colour applied via inline style on background; keep text readable */
   .vft-cell.has-threshold { color: rgba(0,0,0,0.75); border-color: transparent; }
   .vft-cell.has-threshold.active { border-color: var(--purple); }
+  /* Right eye grid cells need light text on the darker purple shades */
+  #vftMapRight .vft-cell.has-threshold { color: rgba(255,255,255,0.9); }
   /* Quadrant label overlay in corner */
   .vft-cell[data-quad]::after {
     content: attr(data-quad);
@@ -295,6 +297,26 @@
     background: rgba(180,143,255,0.15); border: 1px solid rgba(180,143,255,0.35);
     color: var(--purple); border-radius: 3px; padding: 2px 7px;
     margin-left: 6px; vertical-align: middle;
+  }
+
+  /* Dual eye grid maps */
+  .vft-dual-maps {
+    display: flex; gap: 8px; margin-bottom: 8px;
+  }
+  .vft-eye-grid-wrap {
+    flex: 1; display: flex; flex-direction: column; gap: 5px;
+  }
+  .vft-eye-grid-label {
+    font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase;
+    display: flex; align-items: center;
+    font-weight: 700;
+  }
+  .vft-dual-maps .vft-map {
+    width: 100%; /* fill available space instead of fixed 148px */
+  }
+  .vft-dual-maps .vft-cell {
+    width: auto; /* let grid distribute */
+    aspect-ratio: 1;
   }
 
   /* VFT threshold bars */
@@ -654,28 +676,60 @@
         </div>
       </div>
 
-      <!-- 4×4 grid map (mirrors the actual 16-position test grid) -->
-      <div class="vft-map-wrap">
-        <div class="vft-map" id="vftMap">
-          <div class="vft-cell" id="vftCell_R1C1" data-quad="TL">R1C1</div>
-          <div class="vft-cell" id="vftCell_R1C2" data-quad="TL">R1C2</div>
-          <div class="vft-cell" id="vftCell_R1C3" data-quad="TR">R1C3</div>
-          <div class="vft-cell" id="vftCell_R1C4" data-quad="TR">R1C4</div>
-          <div class="vft-cell" id="vftCell_R2C1" data-quad="TL">R2C1</div>
-          <div class="vft-cell" id="vftCell_R2C2" data-quad="TL">R2C2</div>
-          <div class="vft-cell" id="vftCell_R2C3" data-quad="TR">R2C3</div>
-          <div class="vft-cell" id="vftCell_R2C4" data-quad="TR">R2C4</div>
-          <div class="vft-cell" id="vftCell_R3C1" data-quad="BL">R3C1</div>
-          <div class="vft-cell" id="vftCell_R3C2" data-quad="BL">R3C2</div>
-          <div class="vft-cell" id="vftCell_R3C3" data-quad="BR">R3C3</div>
-          <div class="vft-cell" id="vftCell_R3C4" data-quad="BR">R3C4</div>
-          <div class="vft-cell" id="vftCell_R4C1" data-quad="BL">R4C1</div>
-          <div class="vft-cell" id="vftCell_R4C2" data-quad="BL">R4C2</div>
-          <div class="vft-cell" id="vftCell_R4C3" data-quad="BR">R4C3</div>
-          <div class="vft-cell" id="vftCell_R4C4" data-quad="BR">R4C4</div>
+      <!-- Dual 4×4 grid maps — one per eye, side by side -->
+      <div class="vft-dual-maps">
+        <!-- Left Eye Grid -->
+        <div class="vft-eye-grid-wrap">
+          <div class="vft-eye-grid-label" style="color:var(--accent);">
+            <svg style="margin-right:4px;" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            Left Eye
+          </div>
+          <div class="vft-map" id="vftMapLeft">
+            <div class="vft-cell" id="vftCellL_R1C1" data-quad="TL">—</div>
+            <div class="vft-cell" id="vftCellL_R1C2" data-quad="TL">—</div>
+            <div class="vft-cell" id="vftCellL_R1C3" data-quad="TR">—</div>
+            <div class="vft-cell" id="vftCellL_R1C4" data-quad="TR">—</div>
+            <div class="vft-cell" id="vftCellL_R2C1" data-quad="TL">—</div>
+            <div class="vft-cell" id="vftCellL_R2C2" data-quad="TL">—</div>
+            <div class="vft-cell" id="vftCellL_R2C3" data-quad="TR">—</div>
+            <div class="vft-cell" id="vftCellL_R2C4" data-quad="TR">—</div>
+            <div class="vft-cell" id="vftCellL_R3C1" data-quad="BL">—</div>
+            <div class="vft-cell" id="vftCellL_R3C2" data-quad="BL">—</div>
+            <div class="vft-cell" id="vftCellL_R3C3" data-quad="BR">—</div>
+            <div class="vft-cell" id="vftCellL_R3C4" data-quad="BR">—</div>
+            <div class="vft-cell" id="vftCellL_R4C1" data-quad="BL">—</div>
+            <div class="vft-cell" id="vftCellL_R4C2" data-quad="BL">—</div>
+            <div class="vft-cell" id="vftCellL_R4C3" data-quad="BR">—</div>
+            <div class="vft-cell" id="vftCellL_R4C4" data-quad="BR">—</div>
+          </div>
         </div>
-        <div style="flex:1;font-size:9px;color:var(--muted);line-height:2;" id="vftLiveLog">Awaiting test...</div>
+        <!-- Right Eye Grid -->
+        <div class="vft-eye-grid-wrap">
+          <div class="vft-eye-grid-label" style="color:var(--purple);">
+            Right Eye
+            <svg style="margin-left:4px;" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          </div>
+          <div class="vft-map" id="vftMapRight">
+            <div class="vft-cell" id="vftCellR_R1C1" data-quad="TL">—</div>
+            <div class="vft-cell" id="vftCellR_R1C2" data-quad="TL">—</div>
+            <div class="vft-cell" id="vftCellR_R1C3" data-quad="TR">—</div>
+            <div class="vft-cell" id="vftCellR_R1C4" data-quad="TR">—</div>
+            <div class="vft-cell" id="vftCellR_R2C1" data-quad="TL">—</div>
+            <div class="vft-cell" id="vftCellR_R2C2" data-quad="TL">—</div>
+            <div class="vft-cell" id="vftCellR_R2C3" data-quad="TR">—</div>
+            <div class="vft-cell" id="vftCellR_R2C4" data-quad="TR">—</div>
+            <div class="vft-cell" id="vftCellR_R3C1" data-quad="BL">—</div>
+            <div class="vft-cell" id="vftCellR_R3C2" data-quad="BL">—</div>
+            <div class="vft-cell" id="vftCellR_R3C3" data-quad="BR">—</div>
+            <div class="vft-cell" id="vftCellR_R3C4" data-quad="BR">—</div>
+            <div class="vft-cell" id="vftCellR_R4C1" data-quad="BL">—</div>
+            <div class="vft-cell" id="vftCellR_R4C2" data-quad="BL">—</div>
+            <div class="vft-cell" id="vftCellR_R4C3" data-quad="BR">—</div>
+            <div class="vft-cell" id="vftCellR_R4C4" data-quad="BR">—</div>
+          </div>
+        </div>
       </div>
+      <div style="font-size:9px;color:var(--muted);line-height:2;margin-bottom:6px;" id="vftLiveLog">Awaiting test...</div>
 
       <div style="font-size:9px;color:var(--muted);margin-bottom:6px;">Test progress</div>
       <div class="vft-progress-wrap"><div id="vftProgressFill2"></div></div>
@@ -757,9 +811,27 @@ function aggregateToQuadrants(thresholds) {
   return result;
 }
 
-// Helper: get a cell element by posId
-function vftCell(posId) {
-  return document.getElementById('vftCell_' + posId);
+// Helper: get a cell element by posId for a specific eye ('left' | 'right')
+// Falls back to whichever grid has a cell (for backwards compat)
+function vftCell(posId, eye) {
+  if (eye === 'left')  return document.getElementById('vftCellL_' + posId);
+  if (eye === 'right') return document.getElementById('vftCellR_' + posId);
+  // No eye specified — try both
+  return document.getElementById('vftCellL_' + posId) || document.getElementById('vftCellR_' + posId);
+}
+
+// Reset all cells in one eye's grid to blank state
+function resetEyeGrid(eye) {
+  const prefix = eye === 'left' ? 'vftCellL_' : 'vftCellR_';
+  VFT_ALL_IDS.forEach(id => {
+    const el = document.getElementById(prefix + id);
+    if (el) {
+      el.className = 'vft-cell';
+      el.style.background = '';
+      el.style.borderColor = '';
+      el.textContent = '—';
+    }
+  });
 }
 
 // Build timeline
@@ -914,16 +986,8 @@ function handleMessage(d) {
     currentTestEye = d.eye;
     updateEyeTabs(d.eye, false);
     addAlert(`Patient selected ${d.eye} eye for testing`, 'p');
-    // Reset all 16 grid cells for the new eye
-    VFT_ALL_IDS.forEach(id => {
-      const el = vftCell(id);
-      if (el) {
-        el.className = 'vft-cell';
-        el.style.background = '';
-        el.style.borderColor = '';
-        el.textContent = id;
-      }
-    });
+    // Reset the correct eye's grid cells
+    resetEyeGrid(d.eye);
   }
 
   if (d.type === 'baseline_reused') {
@@ -956,16 +1020,8 @@ function handleMessage(d) {
     document.getElementById('vftProgressFill2').style.width = '0%';
     document.getElementById('vftLiveLog').textContent = `Testing ${currentTestEye || '?'} eye — Phase 1 (central dots)…`;
     addAlert(`Visual field test started — ${currentTestEye || '?'} eye · Phase 1`, 'p');
-    // Reset all 16 grid cells (clear threshold colours)
-    VFT_ALL_IDS.forEach(id => {
-      const el = vftCell(id);
-      if (el) {
-        el.className = 'vft-cell';
-        el.style.background = '';
-        el.style.borderColor = '';
-        el.textContent = id;
-      }
-    });
+    // Reset the correct eye's grid cells (clear threshold colours)
+    resetEyeGrid(currentTestEye);
     updateEyeTabs(currentTestEye, false);
   }
 
@@ -976,24 +1032,24 @@ function handleMessage(d) {
     const pct = vftTotalTrials ? Math.min(99, vftTrialCount / vftTotalTrials * 100) : 0;
     document.getElementById('vftProgressFill2').style.width = pct + '%';
     document.getElementById('vftTrialCount').textContent = `${vftTrialCount} trials · ${d.phase || ''} pass ${(d.passNumber||0)+1}`;
-    // Highlight the active cell; leave threshold colours on others
+    // Highlight the active cell in the correct eye's grid
     VFT_ALL_IDS.forEach(id => {
-      const el = vftCell(id);
+      const el = vftCell(id, currentTestEye);
       if (!el) return;
       if (id === d.posId) {
         el.classList.add('active');
-        el.style.background = '';   // let CSS .active style take over
+        el.style.background = '';
         el.style.borderColor = '';
         el.textContent = d.luminance;
       } else {
         el.classList.remove('active');
-        // Restore threshold colour if available (don't reset text)
       }
     });
   }
 
   if (d.type === 'vft_response') {
-    const el = vftCell(d.posId);
+    const eye = d.eye || currentTestEye;
+    const el = vftCell(d.posId, eye);
     if (el) {
       el.classList.remove('active');
       if (d.hit) {
@@ -1001,9 +1057,8 @@ function handleMessage(d) {
         el.textContent = d.luminance;
         setTimeout(() => {
           el.classList.remove('hit');
-          // After flash, restore threshold colour if available
           if (d.thresholds && d.thresholds[d.posId] !== undefined) {
-            const bg = thresholdBgColor(d.thresholds[d.posId]);
+            const bg = thresholdBgColor(d.thresholds[d.posId], eye);
             el.style.background = bg; el.style.borderColor = 'transparent';
             el.classList.add('has-threshold');
             el.textContent = d.thresholds[d.posId];
@@ -1017,7 +1072,7 @@ function handleMessage(d) {
         setTimeout(() => {
           el.classList.remove('miss');
           if (d.thresholds && d.thresholds[d.posId] !== undefined) {
-            const bg = thresholdBgColor(d.thresholds[d.posId]);
+            const bg = thresholdBgColor(d.thresholds[d.posId], eye);
             el.style.background = bg; el.style.borderColor = 'transparent';
             el.classList.add('has-threshold');
             el.textContent = d.thresholds[d.posId];
@@ -1028,10 +1083,9 @@ function handleMessage(d) {
       }
     }
 
-    // Update the live threshold grid for all 16 positions
-    if (d.thresholds) updateVFTThresholds(d.thresholds);
+    // Update the live threshold grid for the correct eye
+    if (d.thresholds) updateVFTThresholds(d.thresholds, eye);
 
-    const eye = d.eye || currentTestEye;
     const phaseLabel = d.phase ? ` [${d.phase === 'phase1' ? 'P1' : 'P2'} pass ${(d.passNumber||0)+1}]` : '';
     addAlert(`VFT [${eye || '?'}]${phaseLabel} ${d.posId}: lum=${d.luminance} → ${d.hit ? 'SEEN' : 'MISSED'}${d.hit ? ` RT=${d.rt}ms` : ''}`, 'p');
   }
@@ -1053,7 +1107,7 @@ function handleMessage(d) {
     }
     if (d.thresholds) {
       // Update the live colour-coded 4×4 grid with final thresholds
-      updateVFTThresholds(d.thresholds);
+      updateVFTThresholds(d.thresholds, eye);
 
       if (eye) {
         vftEyeThresholds[eye] = d.thresholds;
@@ -1133,22 +1187,26 @@ function handleMessage(d) {
   }
 }
 
+// Track done state for each eye independently so completing one eye
+// never clears the tick from the other.
+const eyeTabDone = { left: false, right: false };
+
 function updateEyeTabs(eye, done) {
   const leftTab  = document.getElementById('eyeTabLeft');
   const rightTab = document.getElementById('eyeTabRight');
-  
-  // Clear any existing classes but maintain the inner SVGs/Text 
-  // (We use classList methods so we don't clobber the inline SVG HTML content)
-  leftTab.className  = 'eye-tab';
+
+  // Persist done state — never go backwards
+  if (done) eyeTabDone[eye] = true;
+
+  // Rebuild left tab classes from persistent state
+  leftTab.className = 'eye-tab';
+  if (eyeTabDone.left) leftTab.classList.add('done');
+  if (eye === 'left')  leftTab.classList.add('active-left');
+
+  // Rebuild right tab classes from persistent state
   rightTab.className = 'eye-tab';
-  
-  if (done) {
-    if (eye === 'left')  { leftTab.classList.add('done', 'active-left'); }
-    if (eye === 'right') { rightTab.classList.add('done', 'active-right'); }
-  } else {
-    if (eye === 'left')  { leftTab.classList.add('active-left'); }
-    if (eye === 'right') { rightTab.classList.add('active-right'); }
-  }
+  if (eyeTabDone.right) rightTab.classList.add('done');
+  if (eye === 'right')  rightTab.classList.add('active-right');
 }
 
 function updateDualEyeThresholds(eye, thresholds) {
@@ -1166,22 +1224,31 @@ function updateDualEyeThresholds(eye, thresholds) {
 
 // Colour-code the 4×4 grid cells with the live per-position threshold values.
 // Background colour: green (low = good) → blue → orange → red (high = poor).
-function thresholdBgColor(val) {
+function thresholdBgColor(val, eye) {
   if (val === null || val === undefined) return null;
+  if (eye === 'right') {
+    // Purple palette — light enough that dark text (rgba 0,0,0,0.75) stays readable
+    if (val <= 60)  return '#c4a8ff';   // bright lavender  (best sensitivity)
+    if (val <= 120) return '#9b72ff';   // medium purple
+    if (val <= 180) return '#7044cc';   // deep purple
+    return '#4a1e99';                   // very dark purple  (worst sensitivity)
+  }
+  // Green palette for left eye (unchanged)
   if (val <= 60)  return '#00f0b0';
   if (val <= 120) return '#7adcff';
   if (val <= 180) return '#ffb830';
   return '#ff3a5c';
 }
 
-function updateVFTThresholds(thresholds) {
+function updateVFTThresholds(thresholds, eye) {
   if (!thresholds) return;
+  const activeEye = eye || currentTestEye;
   VFT_ALL_IDS.forEach(posId => {
-    const el = vftCell(posId);
+    const el = vftCell(posId, activeEye);
     if (!el) return;
     const val = thresholds[posId];
     if (val === null || val === undefined) return;
-    const bg = thresholdBgColor(val);
+    const bg = thresholdBgColor(val, activeEye);
     el.style.background = bg;
     el.style.borderColor = 'transparent';
     el.classList.add('has-threshold');
@@ -1192,9 +1259,8 @@ function updateVFTThresholds(thresholds) {
   });
 
   // Also update the quadrant summary bars from the live per-position data
-  const eye = currentTestEye;
-  if (eye) {
-    updateDualEyeThresholds(eye, aggregateToQuadrants(thresholds));
+  if (activeEye) {
+    updateDualEyeThresholds(activeEye, aggregateToQuadrants(thresholds));
   }
 }
 

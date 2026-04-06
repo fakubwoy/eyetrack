@@ -376,27 +376,65 @@ function buildDashboardHTML(doctor, invitations, origin, summaries) {
   .data-chip.gaze{color:var(--accent);background:var(--accent-dim);border:1px solid rgba(0,240,176,0.25)}
   .data-chip.vft{color:var(--purple);background:var(--purple-dim);border:1px solid rgba(180,143,255,0.25)}
   /* Summary modal */
-  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:200;align-items:center;justify-content:center;padding:16px}
-  .modal-backdrop.open{display:flex}
-  .modal{background:var(--surface);border:1px solid var(--border);border-radius:10px;width:100%;max-width:700px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
-  .modal-header{padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
-  .modal-title{font-family:var(--sans);font-size:16px;font-weight:700;color:#fff;flex:1}
-  .modal-close{background:transparent;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;padding:0 4px}
-  .modal-close:hover{color:var(--text)}
-  .modal-body{padding:18px 22px;overflow-y:auto;flex:1}
-  .modal-section{margin-bottom:20px}
-  .modal-section-title{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);backdrop-filter:blur(6px);z-index:200;align-items:center;justify-content:center;padding:16px}
+  .modal-backdrop.open{display:flex;animation:fadeInBackdrop 0.2s ease}
+  @keyframes fadeInBackdrop{from{opacity:0}to{opacity:1}}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;width:100%;max-width:740px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.04);animation:slideUpModal 0.25s cubic-bezier(0.34,1.56,0.64,1)}
+  @keyframes slideUpModal{from{opacity:0;transform:translateY(24px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+  .modal-header{padding:22px 26px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;background:linear-gradient(180deg,rgba(255,255,255,0.025) 0%,transparent 100%);position:relative}
+  .modal-header::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)}
+  .modal-title{font-family:var(--sans);font-size:18px;font-weight:800;color:#fff;flex:1;letter-spacing:-0.4px}
+  .modal-title-sub{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);display:block;margin-top:2px;font-family:var(--mono);font-weight:400}
+  .modal-close{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--muted);font-size:14px;cursor:pointer;line-height:1;padding:6px 8px;border-radius:6px;transition:all 0.2s;font-family:var(--mono)}
+  .modal-close:hover{color:var(--text);background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.15)}
+  .modal-body{padding:22px 26px;overflow-y:auto;flex:1;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+  .modal-body::-webkit-scrollbar{width:4px}
+  .modal-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+  .modal-section{margin-bottom:26px}
+  .modal-section-title{font-size:8px;letter-spacing:2.5px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+  .modal-section-title::before{content:'';display:inline-block;width:3px;height:10px;background:var(--accent);border-radius:2px;flex-shrink:0}
+  .modal-section-title.eye-right::before{background:var(--purple)}
   .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
-  .stat-mini{background:var(--surface2);border-radius:5px;padding:10px 12px}
-  .stat-mini-num{font-family:var(--sans);font-size:20px;font-weight:700;color:var(--accent);line-height:1}
-  .stat-mini-lbl{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-top:4px}
-  .quad-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-width:280px}
-  .quad-cell{background:var(--surface2);border-radius:4px;padding:10px 12px;text-align:center}
-  .quad-cell-pos{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
-  .quad-cell-val{font-family:var(--sans);font-size:22px;font-weight:700;color:var(--purple)}
-  .quad-cell-lbl{font-size:8px;color:var(--muted);margin-top:2px}
+  .stat-mini{background:var(--surface2);border-radius:8px;padding:14px 14px 12px;border:1px solid var(--border);transition:border-color 0.2s;position:relative;overflow:hidden}
+  .stat-mini::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:currentColor;opacity:0.12;border-radius:0 0 8px 8px}
+  .stat-mini-num{font-family:var(--sans);font-size:22px;font-weight:800;line-height:1;letter-spacing:-0.5px}
+  .stat-mini-lbl{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-top:5px}
+  /* Quad grid */
+  .quad-wrap{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px}
+  .quad-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;width:200px;flex-shrink:0}
+  .quad-cell{border-radius:8px;padding:11px 10px 9px;text-align:center;border:1px solid rgba(255,255,255,0.05);position:relative;overflow:hidden;transition:transform 0.15s}
+  .quad-cell:hover{transform:scale(1.02)}
+  .quad-cell-pos{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:5px}
+  .quad-cell-val{font-family:var(--sans);font-size:24px;font-weight:800;line-height:1;letter-spacing:-0.5px}
+  .quad-cell-lbl{font-size:7px;color:rgba(255,255,255,0.45);margin-top:3px;line-height:1.3}
+  /* Eye section headers */
+  .eye-section{margin-bottom:18px}
+  .eye-section-header{display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;border-radius:8px}
+  .eye-section-header.left-eye{background:rgba(0,240,176,0.07);border:1px solid rgba(0,240,176,0.18)}
+  .eye-section-header.right-eye{background:rgba(180,143,255,0.07);border:1px solid rgba(180,143,255,0.18)}
+  .eye-section-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .eye-section-icon.left-eye{background:rgba(0,240,176,0.15);color:var(--accent)}
+  .eye-section-icon.right-eye{background:rgba(180,143,255,0.15);color:var(--purple)}
+  .eye-section-title{font-family:var(--sans);font-size:13px;font-weight:700;letter-spacing:-0.2px}
+  .eye-section-title.left-eye{color:var(--accent)}
+  .eye-section-title.right-eye{color:var(--purple)}
+  .eye-section-subtitle{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-top:2px}
+  /* Sensitivity legend */
+  .sens-legend{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .sens-legend-item{display:flex;align-items:center;gap:5px;font-size:8px;color:var(--muted);letter-spacing:0.5px}
+  .sens-legend-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+  /* Position grid */
+  .pos-grid-wrap{display:inline-block;position:relative}
+  .pos-grid-label{font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+  /* Quad/pos layout side by side */
+  .eye-data-layout{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  /* Color scale bar */
+  .scale-bar{height:4px;border-radius:2px;margin:6px 0 10px;background:linear-gradient(90deg,#00f0b0,#7adcff,#ffb830,#ff3a5c);opacity:0.6}
+  .scale-bar.right-eye{background:linear-gradient(90deg,#c4a8ff,#9b72ff,#7044cc,#4a1e99)}
+  .scale-labels{display:flex;justify-content:space-between;font-size:7px;color:var(--muted);letter-spacing:0.5px;margin-bottom:8px}
+  /* quad-eye-label kept for compat */
   .quad-eye-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-  .modal-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end}
+  .modal-footer{padding:16px 26px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;background:rgba(0,0,0,0.2)}
 </style>
 </head>
 <body>
@@ -563,7 +601,7 @@ function sensitivityColor(val) {
 }
 
 async function viewSummary(token) {
-  document.getElementById('modalPatientName').textContent = '…';
+  document.getElementById('modalPatientName').innerHTML = '…';
   document.getElementById('modalBody').innerHTML = '<div class="empty">Loading…</div>';
   document.getElementById('modalCsvBtn').style.display = 'none';
   document.getElementById('summaryModal').classList.add('open');
@@ -576,12 +614,19 @@ async function viewSummary(token) {
     const date = new Date(s.completedAt);
     const dateStr = date.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
     const timeStr = date.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
-    document.getElementById('modalPatientName').textContent = s.patientName;
+    document.getElementById('modalPatientName').innerHTML = escHtml(s.patientName) + '<span class="modal-title-sub">' + dateStr + ' &mdash; ' + timeStr + '</span>';
 
     let html = '<div class="modal-section"><div class="modal-section-title">Session Info</div>';
-    html += '<div style="font-size:11px;color:var(--muted);line-height:2">';
-    if (s.note) html += '<div>Note: <span style="color:var(--text)">' + escHtml(s.note) + '</span></div>';
-    html += '<div>Completed: <span style="color:var(--text)">' + dateStr + ' at ' + timeStr + '</span></div>';
+    html += '<div style="display:flex;gap:16px;flex-wrap:wrap;">';
+    html += '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;flex:1;min-width:160px">';
+    html += '<div style="font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Completed</div>';
+    html += '<div style="font-size:13px;font-family:var(--sans);font-weight:700;color:var(--text)">' + dateStr + '</div>';
+    html += '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + timeStr + '</div></div>';
+    if (s.note) {
+      html += '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;flex:2;min-width:160px">';
+      html += '<div style="font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Clinical Note</div>';
+      html += '<div style="font-size:12px;color:var(--text);line-height:1.4">' + escHtml(s.note) + '</div></div>';
+    }
     html += '</div></div>';
 
     // Gaze stats
@@ -602,36 +647,66 @@ async function viewSummary(token) {
 
       const eyes = Object.keys(v.eyeThresholds || {});
       if (eyes.length > 0) {
-        html += '<div class="modal-section"><div class="modal-section-title">VFT — Quadrant Thresholds (0–255 · lower = better)</div>';
+        // Section heading
+        html += '<div class="modal-section"><div class="modal-section-title">Visual Field Test — Sensitivity Maps</div>';
+
+        // Scale legend
+        html += '<div style="font-size:8px;color:var(--muted);letter-spacing:0.5px;margin-bottom:6px">Threshold scale: 0–255 · lower value = brighter stimulus detected = better sensitivity</div>';
+
         eyes.forEach(eye => {
+          const isRight = eye === 'right';
+          const eyeLabel = isRight ? 'Right Eye' : 'Left Eye';
+          const eyeColor = isRight ? 'var(--purple)' : 'var(--accent)';
+          const eyeIconColor = isRight ? '#b48fff' : '#00f0b0';
           const th = v.eyeThresholds[eye];
           const quadVals = { TL:[], TR:[], BL:[], BR:[] };
           const QUAD_MAP = { R1C1:'TL',R1C2:'TL',R2C1:'TL',R2C2:'TL', R1C3:'TR',R1C4:'TR',R2C3:'TR',R2C4:'TR', R3C1:'BL',R3C2:'BL',R4C1:'BL',R4C2:'BL', R3C3:'BR',R3C4:'BR',R4C3:'BR',R4C4:'BR' };
           Object.entries(th).forEach(([posId, val]) => { const q=QUAD_MAP[posId]; if(q && val!==null && val!==undefined) quadVals[q].push(val); });
           const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
           const tl=avg(quadVals.TL), tr=avg(quadVals.TR), bl=avg(quadVals.BL), br=avg(quadVals.BR);
-          html += '<div class="quad-eye-label">' + eye.charAt(0).toUpperCase()+eye.slice(1) + ' Eye</div>';
-          html += '<div class="quad-grid" style="margin-bottom:14px">';
-          html += quadCell('Upper-Left',  tl);
-          html += quadCell('Upper-Right', tr);
-          html += quadCell('Lower-Left',  bl);
-          html += quadCell('Lower-Right', br);
+
+          // Eye section header
+          const eyeSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+          html += '<div class="eye-section-header ' + (isRight ? 'right-eye' : 'left-eye') + '" style="margin-bottom:14px">';
+          html += '<div class="eye-section-icon ' + (isRight ? 'right-eye' : 'left-eye') + '">' + eyeSvg + '</div>';
+          html += '<div><div class="eye-section-title ' + (isRight ? 'right-eye' : 'left-eye') + '">' + eyeLabel + '</div>';
+          html += '<div class="eye-section-subtitle">Perimetry data — quadrant & position maps</div></div>';
           html += '</div>';
 
-          // ── Per-position 4×4 grid ─────────────────────────────────────────
-          html += '<div class="modal-section-title" style="font-size:9px;margin-bottom:8px;margin-top:4px;">Per-Position Sensitivity Map — ' + eye.charAt(0).toUpperCase()+eye.slice(1) + ' Eye</div>';
-          html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;max-width:220px;margin-bottom:14px;">';
+          // Color scale bar
+          html += '<div class="scale-bar ' + (isRight ? 'right-eye' : '') + '"></div>';
+          html += '<div class="scale-labels"><span>0 — Best</span><span>255 — Worst</span></div>';
+
+          // Side-by-side: quad grid + pos map
+          html += '<div class="eye-data-layout" style="margin-bottom:20px">';
+
+          // Quadrant grid
+          html += '<div>';
+          html += '<div style="font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Quadrant Averages</div>';
+          html += '<div class="quad-grid">';
+          html += quadCell('Upper-Left',  tl, eye);
+          html += quadCell('Upper-Right', tr, eye);
+          html += quadCell('Lower-Left',  bl, eye);
+          html += quadCell('Lower-Right', br, eye);
+          html += '</div></div>';
+
+          // 4×4 position grid
           const POS_GRID = ['R1C1','R1C2','R1C3','R1C4','R2C1','R2C2','R2C3','R2C4','R3C1','R3C2','R3C3','R3C4','R4C1','R4C2','R4C3','R4C4'];
+          html += '<div>';
+          html += '<div style="font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">16-Point Sensitivity Map</div>';
+          html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px;width:184px;">';
           POS_GRID.forEach(posId => {
             const val = th[posId];
-            const bg = posThreshBg(val);
-            const textColor = (val !== null && val !== undefined) ? 'rgba(0,0,0,0.75)' : 'var(--muted)';
-            html += '<div title="' + posId + ': ' + (val !== null && val !== undefined ? val : '—') + '" style="background:' + bg + ';border-radius:4px;display:flex;align-items:center;justify-content:center;height:36px;font-size:9px;font-weight:700;color:' + textColor + ';">' +
+            const bg = posThreshBg(val, eye);
+            const textColor = (val !== null && val !== undefined) ? (isRight ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.75)') : 'var(--muted)';
+            const title = posId + ': ' + (val !== null && val !== undefined ? val : '—');
+            html += '<div title="' + title + '" style="background:' + bg + ';border-radius:5px;display:flex;align-items:center;justify-content:center;height:38px;font-size:9px;font-weight:700;color:' + textColor + ';transition:transform 0.15s;cursor:default">' +
               (val !== null && val !== undefined ? val : '—') + '</div>';
           });
-          html += '</div>';
+          html += '</div></div>';
+          html += '</div>'; // end eye-data-layout
         });
-        html += '</div>';
+        html += '</div>'; // end modal-section
       }
 
       if (v.totalTrials !== undefined) {
@@ -656,16 +731,37 @@ async function viewSummary(token) {
 }
 
 function statMini(val, lbl, color) {
-  return '<div class="stat-mini"><div class="stat-mini-num" style="color:'+color+'">'+escHtml(String(val))+'</div><div class="stat-mini-lbl">'+escHtml(lbl)+'</div></div>';
+  return '<div class="stat-mini" style="color:'+color+'"><div class="stat-mini-num" style="color:'+color+'">'+escHtml(String(val))+'</div><div class="stat-mini-lbl">'+escHtml(lbl)+'</div></div>';
 }
-function quadCell(pos, val) {
-  const color = sensitivityColor(val);
+function quadCell(pos, val, eye) {
+  const bg = quadCellBg(val, eye);
+  const textColor = (val !== null && val !== undefined) ? 'rgba(255,255,255,0.92)' : 'var(--muted)';
   const lbl = sensitivityLabel(val);
-  return '<div class="quad-cell"><div class="quad-cell-pos">'+pos+'</div><div class="quad-cell-val" style="color:'+color+'">'+(val !== null && val !== undefined ? val : '—')+'</div><div class="quad-cell-lbl">'+lbl+'</div></div>';
+  return '<div class="quad-cell" style="background:'+bg+';"><div class="quad-cell-pos">'+pos+'</div><div class="quad-cell-val" style="color:'+textColor+'">'+(val !== null && val !== undefined ? val : '—')+'</div><div class="quad-cell-lbl" style="color:'+textColor+';opacity:0.65">'+lbl+'</div></div>';
 }
-// Background colour for a per-position threshold cell (matches doctor.html colours)
-function posThreshBg(val) {
+function quadCellBg(val, eye) {
   if (val === null || val === undefined) return 'var(--surface2)';
+  if (eye === 'right') {
+    if (val <= 60)  return 'linear-gradient(135deg,#c4a8ff,#9b72ff)';
+    if (val <= 120) return 'linear-gradient(135deg,#9b72ff,#7044cc)';
+    if (val <= 180) return 'linear-gradient(135deg,#7044cc,#5530a0)';
+    return 'linear-gradient(135deg,#5530a0,#3a1577)';
+  }
+  // Left eye — green/teal palette
+  if (val <= 60)  return 'linear-gradient(135deg,#00f0b0,#00c891)';
+  if (val <= 120) return 'linear-gradient(135deg,#00a898,#007a82)';
+  if (val <= 180) return 'linear-gradient(135deg,#ffb830,#e08800)';
+  return 'linear-gradient(135deg,#ff3a5c,#cc1a38)';
+}
+// Background colour for per-position 4×4 grid cells — eye-aware (matches doctor.html)
+function posThreshBg(val, eye) {
+  if (val === null || val === undefined) return 'var(--surface2)';
+  if (eye === 'right') {
+    if (val <= 60)  return '#c4a8ff';
+    if (val <= 120) return '#9b72ff';
+    if (val <= 180) return '#7044cc';
+    return '#4a1e99';
+  }
   if (val <= 60)  return '#00f0b0';
   if (val <= 120) return '#7adcff';
   if (val <= 180) return '#ffb830';
